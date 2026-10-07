@@ -1,0 +1,20 @@
+# Build output
+/lhc
+/dist/
+*.test
+*.out
+coverage.*
+
+# Local runs
+/reports/
+/state/
+*.bak
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local planning notes, never published
+PLAN.md
