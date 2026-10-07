@@ -1,0 +1,43 @@
+==============================================================================
+  Linux Health Check v1.2.3  ·  web01.example.com
+  2026-01-05 07:00 UTC
+  Overall Status: !  CAUTION
+==============================================================================
+
+  NEW FINDINGS — PLEASE READ
+  (1 new)
+
+  Needs attention — new:
+    - Disk /var at 91%
+
+  Cleared since last run:
+    - Service nginx.service failed
+
+
+  AT A GLANCE
+  ──────────────────────────────────────────────────────────────────────────
+  !  Disk Usage                     CAUTION  (1 to review)
+  ·  Listening Ports                INFO
+  ✓  System Information             OK
+  Not present on this host: Docker Containers
+
+  Legend: ✓ OK   · INFO   ! CAUTION   ✕ UNHEALTHY
+
+  !  Disk Usage  [CAUTION]
+  ──────────────────────────────────────────────────────────────────────────
+  ✓  /                              [####......] 41.0% used  (8 GB of 20 GB, …
+  !  /var                           [#########.] 91.0% used (91 GB of 100 GB,
+                                    8 GB free)
+                                    +3.0 pts since last run
+
+  ·  Listening Ports  [INFO]
+  ──────────────────────────────────────────────────────────────────────────
+     Listening Sockets
+  ·  tcp 0.0.0.0:22 users:(("sshd"))
+
+  ✓  System Information  [OK]
+  ──────────────────────────────────────────────────────────────────────────
+  ✓  Hostname                       web01.example.com
+  ✓  Kernel                         5.14.0-427.el9.x86_64
+
+==============================================================================

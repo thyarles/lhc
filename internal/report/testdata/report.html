@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="only light">
+<meta name="supported-color-schemes" content="only light">
+<title>Health Check — web01.example.com</title>
+<style>
+  :root { color-scheme: only light; supported-color-schemes: only light; }
+  html, body { background: #ffffff !important; }
+  .hc-page { background: #f7f7f5 !important; }
+  .hc-card, .hc-row { background: #ffffff !important; }
+  .hc-row td { background: #ffffff !important; }
+  .hc-band { background: #f7f7f5 !important; }
+  .hc-ink { color: #1a1a19 !important; }
+  .hc-muted { color: #6b6a66 !important; }
+</style>
+</head>
+<body class="hc-page" style="margin:0;padding:0;background:#f7f7f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<div class="hc-card" style="max-width:860px;margin:0 auto;background:#ffffff;border:1px solid #e3e3e0">
+
+<div class="hc-band" style="padding:18px 22px;border-bottom:1px solid #e3e3e0;background:#f7f7f5">
+<table role="presentation" style="width:100%;border-collapse:collapse"><tr>
+<td style="background:#f7f7f5">
+<div class="hc-ink" style="font-size:19px;font-weight:700;color:#1a1a19;background:#f7f7f5">web01.example.com</div>
+<div class="hc-muted" style="font-size:11px;color:#6b6a66;margin-top:3px;background:#f7f7f5">Linux Health Check v1.2.3 · 2026-01-05 07:00 UTC</div>
+</td>
+<td style="text-align:right;white-space:nowrap;background:#f7f7f5"><span style="display:inline-block;padding:2px 9px 3px;border-radius:11px;background:#fdf3dd;color:#8a5a00;font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap"><span style="color:#fab219">&#9679;</span>&nbsp;CAUTION</span></td>
+</tr></table>
+</div>
+
+<div style="padding:20px 22px;background:#ffffff">
+<div style="border:1px solid #e3e3e0;border-left:4px solid #d03b3b;border-radius:6px;padding:14px 16px;margin-bottom:22px;background:#f7f7f5">
+<div class="hc-ink" style="font-size:14px;font-weight:700;color:#1a1a19;background:#f7f7f5">This report contains new findings — please read</div>
+<div class="hc-muted" style="font-size:11px;color:#6b6a66;margin-top:3px;background:#f7f7f5">1 new</div>
+<div style="margin:10px 0 0">
+<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#b02b2b;background:#f7f7f5">Needs attention — new</div>
+<ul style="margin:5px 0 0 18px;padding:0;font-size:12px"><li class="hc-ink" style="margin:3px 0;color:#1a1a19;background:#f7f7f5">Disk /var at 91%</li>
+</ul></div>
+<div style="margin:10px 0 0">
+<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#0a7a0a;background:#f7f7f5">Cleared since last run</div>
+<ul style="margin:5px 0 0 18px;padding:0;font-size:12px"><li class="hc-ink" style="margin:3px 0;color:#1a1a19;background:#f7f7f5">Service nginx.service failed</li>
+</ul></div>
+</div>
+
+<div style="margin-bottom:22px">
+<div class="hc-ink" style="font-size:13px;font-weight:700;color:#1a1a19;margin-bottom:8px;background:#ffffff">At a glance</div>
+<table role="presentation" style="width:100%;border-collapse:collapse"><tr>
+<td style="vertical-align:top;width:50%;padding-right:16px">
+<table role="presentation" style="width:100%;border-collapse:collapse">
+<tr class="hc-row" style="background:#ffffff"><td class="hc-ink" style="padding:5px 10px 5px 0;font-size:12px;color:#1a1a19;background:#ffffff;border-bottom:1px solid #e3e3e0">Disk Usage</td><td style="padding:5px 0;text-align:right;white-space:nowrap;background:#ffffff;border-bottom:1px solid #e3e3e0"><span style="display:inline-block;padding:2px 9px 3px;border-radius:11px;background:#fdf3dd;color:#8a5a00;font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap"><span style="color:#fab219">&#9679;</span>&nbsp;CAUTION</span><span class="hc-muted" style="color:#6b6a66;font-size:11px">&nbsp;1</span></td></tr>
+<tr class="hc-row" style="background:#ffffff"><td class="hc-ink" style="padding:5px 10px 5px 0;font-size:12px;color:#1a1a19;background:#ffffff;border-bottom:1px solid #e3e3e0">Listening Ports</td><td style="padding:5px 0;text-align:right;white-space:nowrap;background:#ffffff;border-bottom:1px solid #e3e3e0"><span style="display:inline-block;padding:2px 9px 3px;border-radius:11px;background:#f1f1ef;color:#52514e;font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap"><span style="color:#8a8985">&#9679;</span>&nbsp;INFO</span></td></tr>
+</table></td>
+<td style="vertical-align:top;width:50%">
+<table role="presentation" style="width:100%;border-collapse:collapse">
+<tr class="hc-row" style="background:#ffffff"><td class="hc-ink" style="padding:5px 10px 5px 0;font-size:12px;color:#1a1a19;background:#ffffff;border-bottom:1px solid #e3e3e0">System Information</td><td style="padding:5px 0;text-align:right;white-space:nowrap;background:#ffffff;border-bottom:1px solid #e3e3e0"><span style="display:inline-block;padding:2px 9px 3px;border-radius:11px;background:#e8f6e8;color:#0a7a0a;font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap"><span style="color:#0ca30c">&#9679;</span>&nbsp;OK</span></td></tr>
+</table></td>
+</tr></table>
+<div class="hc-muted" style="margin-top:10px;font-size:11px;color:#6b6a66;background:#ffffff">Not present on this host: Docker Containers</div>
+</div>
+
+<div class="hc-muted" style="margin:0 0 18px;padding:10px 0;border-top:1px solid #e3e3e0;font-size:11px;color:#6b6a66;background:#ffffff"><span style="margin-right:14px"><span style="display:inline-block;padding:2px 9px 3px;border-radius:11px;background:#e8f6e8;color:#0a7a0a;font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap"><span style="color:#0ca30c">&#9679;</span>&nbsp;OK</span></span><span style="margin-right:14px"><span style="display:inline-block;padding:2px 9px 3px;border-radius:11px;background:#f1f1ef;color:#52514e;font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap"><span style="color:#8a8985">&#9679;</span>&nbsp;INFO</span></span><span style="margin-right:14px"><span style="display:inline-block;padding:2px 9px 3px;border-radius:11px;background:#fdf3dd;color:#8a5a00;font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap"><span style="color:#fab219">&#9679;</span>&nbsp;CAUTION</span></span><span style="margin-right:14px"><span style="display:inline-block;padding:2px 9px 3px;border-radius:11px;background:#fbe9e9;color:#b02b2b;font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap"><span style="color:#d03b3b">&#9679;</span>&nbsp;UNHEALTHY</span></span></div>
+<div style="margin-bottom:18px;border:1px solid #e3e3e0;border-radius:6px;overflow:hidden">
+<div style="padding:9px 10px;background:#f7f7f5;border-bottom:1px solid #e3e3e0">
+<table role="presentation" style="width:100%;border-collapse:collapse"><tr>
+<td class="hc-ink" style="font-size:13px;font-weight:700;color:#1a1a19;background:#f7f7f5">Disk Usage</td>
+<td style="text-align:right;white-space:nowrap;background:#f7f7f5"><span style="display:inline-block;padding:2px 9px 3px;border-radius:11px;background:#fdf3dd;color:#8a5a00;font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap"><span style="color:#fab219">&#9679;</span>&nbsp;CAUTION</span></td>
+</tr></table></div>
+<table role="presentation" style="width:100%;border-collapse:collapse">
+<tr class="hc-row" style="background:#ffffff">
+<td class="hc-muted" style="padding:6px 10px;font-size:12px;color:#6b6a66;background:#ffffff;vertical-align:top;width:34%;word-break:break-word">/</td>
+<td class="hc-ink" style="padding:6px 10px;font-size:12px;color:#1a1a19;background:#ffffff;vertical-align:top;word-break:break-word"><span style="display:inline-block;width:96px;height:6px;border-radius:3px;background:#e8f6e8;vertical-align:middle;margin-right:8px;overflow:hidden;line-height:6px;font-size:0"><span style="display:inline-block;width:41%;height:6px;border-radius:3px;background:#0ca30c"></span></span>41.0% used  (8 GB of 20 GB, 11 GB free)</td></tr>
+<tr class="hc-flag" style="background:#fdf3dd">
+<td class="hc-muted" style="padding:6px 10px;font-size:12px;color:#6b6a66;background:#fdf3dd;vertical-align:top;width:34%;word-break:break-word"><span style="color:#fab219;font-weight:700">&#9679;</span>&nbsp;/var</td>
+<td class="" style="padding:6px 10px;font-size:12px;color:#8a5a00;background:#fdf3dd;vertical-align:top;word-break:break-word"><span style="display:inline-block;width:96px;height:6px;border-radius:3px;background:#fdf3dd;vertical-align:middle;margin-right:8px;overflow:hidden;line-height:6px;font-size:0"><span style="display:inline-block;width:91%;height:6px;border-radius:3px;background:#fab219"></span></span>91.0% used  (91 GB of 100 GB, 8 GB free)<span style="color:#6b6a66;font-size:11px">&nbsp;&nbsp;&#43;3.0 pts since last run</span></td></tr>
+</table></div>
+<div style="margin-bottom:18px;border:1px solid #e3e3e0;border-radius:6px;overflow:hidden">
+<div style="padding:9px 10px;background:#f7f7f5;border-bottom:1px solid #e3e3e0">
+<table role="presentation" style="width:100%;border-collapse:collapse"><tr>
+<td class="hc-ink" style="font-size:13px;font-weight:700;color:#1a1a19;background:#f7f7f5">Listening Ports</td>
+<td style="text-align:right;white-space:nowrap;background:#f7f7f5"><span style="display:inline-block;padding:2px 9px 3px;border-radius:11px;background:#f1f1ef;color:#52514e;font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap"><span style="color:#8a8985">&#9679;</span>&nbsp;INFO</span></td>
+</tr></table></div>
+<table role="presentation" style="width:100%;border-collapse:collapse">
+<tr><td colspan="2" style="background:#f7f7f5;padding:5px 10px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a66">Listening Sockets</td></tr>
+<tr class="hc-row" style="background:#ffffff">
+<td class="hc-muted" style="padding:6px 10px;font-size:12px;color:#6b6a66;background:#ffffff;vertical-align:top;width:34%;word-break:break-word"></td>
+<td class="hc-ink" style="padding:6px 10px;font-size:12px;color:#1a1a19;background:#ffffff;vertical-align:top;word-break:break-word">tcp 0.0.0.0:22 users:((&#34;sshd&#34;))</td></tr>
+</table></div>
+<div style="margin-bottom:18px;border:1px solid #e3e3e0;border-radius:6px;overflow:hidden">
+<div style="padding:9px 10px;background:#f7f7f5;border-bottom:1px solid #e3e3e0">
+<table role="presentation" style="width:100%;border-collapse:collapse"><tr>
+<td class="hc-ink" style="font-size:13px;font-weight:700;color:#1a1a19;background:#f7f7f5">System Information</td>
+<td style="text-align:right;white-space:nowrap;background:#f7f7f5"><span style="display:inline-block;padding:2px 9px 3px;border-radius:11px;background:#e8f6e8;color:#0a7a0a;font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap"><span style="color:#0ca30c">&#9679;</span>&nbsp;OK</span></td>
+</tr></table></div>
+<table role="presentation" style="width:100%;border-collapse:collapse">
+<tr class="hc-row" style="background:#ffffff">
+<td class="hc-muted" style="padding:6px 10px;font-size:12px;color:#6b6a66;background:#ffffff;vertical-align:top;width:34%;word-break:break-word">Hostname</td>
+<td class="hc-ink" style="padding:6px 10px;font-size:12px;color:#1a1a19;background:#ffffff;vertical-align:top;word-break:break-word">web01.example.com</td></tr>
+<tr class="hc-row" style="background:#ffffff">
+<td class="hc-muted" style="padding:6px 10px;font-size:12px;color:#6b6a66;background:#ffffff;vertical-align:top;width:34%;word-break:break-word">Kernel</td>
+<td class="hc-ink" style="padding:6px 10px;font-size:12px;color:#1a1a19;background:#ffffff;vertical-align:top;word-break:break-word">5.14.0-427.el9.x86_64</td></tr>
+</table></div>
+</div>
+
+<div class="hc-band hc-muted" style="padding:10px 22px;font-size:10px;color:#6b6a66;background:#f7f7f5;border-top:1px solid #e3e3e0;text-align:center">
+web01.example.com · 2026-01-05 07:00 UTC · overall CAUTION
+</div>
+
+</div>
+</body>
+</html>

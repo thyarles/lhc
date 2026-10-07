@@ -1,5 +1,190 @@
-# lhc configuration. Only what this host wants different from the defaults
-# needs to be here; every key below shows its default.
+# lhc configuration.
+#
+# Every key shows its default. The file only needs what this host wants
+# different: delete anything you have not changed, and a setting added in a
+# future release arrives with its default without anyone editing this file.
+#
+# Change values with `lhc config set key=value` (it validates and keeps your
+# comments), check them with `lhc config validate`, and see the effective
+# settings with `lhc config show --diff`.
+
+# The name this host uses in reports, subject lines and saved report files.
+# Blank = the kernel hostname. The resolved DNS name is deliberately NOT used:
+# on clustered hosts it is often a shared VIP name.
+hostname: ""
+
+smtp:
+  host: relay.example.com
+  port: 25
+  # none | starttls | implicit. A username needs starttls or implicit:
+  # lhc will not send a password in clear text.
+  tls: none
+  # Accept a self-signed relay certificate.
+  tls_skip_verify: false
+  username: ""
+  password: ""
+  # Blank = lhc@<this host's name>.
+  from: ""
+
+email:
+  # Small "the system is alive" group: gets every run's report.
+  daily_recipients: []
+  # Broad list: hears only about NEW problems worth acting on.
+  alert_recipients: []
+  # inline     — HTML in the body, plain text as the alternative (recommended)
+  # attachment — plain text in the body, HTML as a file
+  # both       — inline and attached
+  html_mode: inline
+
+alerts:
+  # Minimum severity that reaches alert_recipients: caution | unhealthy.
+  notify_all_on: unhealthy
+  # Re-notify about a condition still open after this long. 0 = never.
+  remind_caution: 168h
+  remind_unhealthy: 24h
+  # Forget a condition that has been clear this long, so a genuine
+  # recurrence notifies again instead of being deduplicated.
+  forget_after: 72h
+
+schedule:
+  # First run of the day, HH:MM.
+  time: "00:07"
+  # 0 = once a day. Otherwise whole hours, e.g. 6h runs at 00:07, 06:07,
+  # 12:07 and 18:07.
+  every: 0
+  # Whole fleets install the same time, so scheduled runs wait a random
+  # slice of random_window first instead of all scanning at once. A run
+  # started by hand is never delayed. Re-run `lhc install` after changing.
+  random: true
+  random_window: 8h
+
+reports:
+  # Saved reports to keep. 0 keeps everything.
+  keep: 30
+
+# Blank = /var/lib/lhc, /var/lib/lhc/reports and /var/log/lhc.log as root,
+# ~/.local/state/lhc otherwise.
+paths:
+  state_dir: ""
+  report_dir: ""
+  log_file: ""
+
 checks:
-  system: { enabled: true }
-  cpu: { enabled: true, caution: 80, unhealthy: 95, load_caution_mult: 1.0, load_unhealthy_mult: 2.0 }
+  system:
+    enabled: true
+  cpu:
+    enabled: true
+    caution: 80                # percent busy
+    unhealthy: 95
+    # Load average thresholds, as multiples of the CPU count.
+    load_caution_mult: 1
+    load_unhealthy_mult: 2
+  memory:
+    enabled: true
+    caution: 80                # percent of RAM used; swap rows use the same levels
+    unhealthy: 95              # only RAM at this level alerts, never swap
+  disk:
+    enabled: true
+    caution: 90                # percent used per filesystem; alerts at caution too
+    unhealthy: 95
+    # Extra mount-point patterns to skip, ON TOP OF the built-in list
+    # (kubelet, containerd, docker, podman, netns, snap). '*' also matches '/',
+    # so "/mnt/scratch/*" skips everything under it but not /mnt/scratch itself.
+    ignore: []
+  processes:
+    enabled: true
+    # A few zombies are routine and clear on their own.
+    zombie_caution: 10
+    zombie_unhealthy: 50
+  services:
+    enabled: true
+  docker:
+    enabled: true
+    # A container that exited non-zero within this many hours is a fresh
+    # crash (caution). Older ones are assumed to have been stopped on purpose.
+    recent_hours: 24
+  kubernetes:
+    enabled: true
+    # auto    — cluster-wide, plus a per-node pod summary on a multi-node cluster
+    # cluster — always the whole cluster
+    # node    — only pods scheduled on this host (and no PVCs)
+    scope: auto
+    # Explicit kubeconfig path. Empty = $KUBECONFIG, then rke2, k3s, kubeadm,
+    # /root/.kube/config, $HOME/.kube/config (first readable one wins).
+    kubeconfig: ""
+    # Individual signals, so one noisy source can be silenced alone.
+    nodes: true
+    pods: true
+    pvcs: true
+    events: true
+    images: true
+    # Images churn on every deploy: count only, unless this lists the first 10.
+    list_images: false
+    # Pending/ContainerCreating younger than this is the scheduler working.
+    pending_minutes: 15
+    # Restarts picked up SINCE THE LAST RUN that make a pod CAUTION (the total
+    # count is meaningless).
+    restart_delta_caution: 3
+    # Evicted pods older than this are old news (INFO).
+    evicted_recent_hours: 24
+    # Guard rail: stop reading the pod list past this many rows.
+    max_pods: 2000
+  updates:
+    enabled: true
+    # Pending updates are planned maintenance. 0 reports the counts as INFO
+    # only; a positive number raises CAUTION and an alert at that count.
+    caution: 0
+    # The same, for security updates (apt and zypper only).
+    security_caution: 0
+  users:
+    enabled: true
+  auth:
+    enabled: true
+    # Failed SSH attempts today. Internet-facing hosts see a constant
+    # background level, so these are deliberately high.
+    failed_ssh_caution: 50
+    failed_ssh_unhealthy: 500
+  fail2ban:
+    enabled: true
+    # A ban is fail2ban working, not a problem. Set this to flag an unusual
+    # spike (currently banned IPs summed over all jails); 0 = off.
+    banned_ips_caution: 0
+  ports:
+    enabled: true
+    # Loopback sockets cannot be reached from off the host and churn
+    # through random high ports. true lists them anyway.
+    list_local: false
+  crontabs:
+    enabled: true
+  suid:
+    enabled: true
+  packages:
+    enabled: true
+  etc:
+    enabled: true
+    # find -path patterns to skip, added to the built-in list (mtab,
+    # resolv.conf, ld.so.cache, ...). Backup agents that drop timestamped
+    # files into /etc belong here.
+    ignore:
+      - /etc/CommVaultRegistryBackups/*
+  logs:
+    enabled: true
+    # "Invalid user" / "BREAK-IN ATTEMPT" lines today before SSH probing is
+    # CAUTION. 0 = count only. At most 200: the scan keeps the last 200 matches.
+    ssh_brute_force_min: 50
+    # Site-specific patterns, checked after the 9 built-in ones.
+    # pattern: case-insensitive grep -E regex; source: system | auth;
+    # severity: info | caution | unhealthy; min_count: escalate at this many
+    # today (0 = never escalate, max 200). Example:
+    #  - label: NFS Timeouts
+    #    pattern: "nfs: server .* not responding"
+    #    source: system
+    #    severity: caution
+    #    min_count: 3
+    extra_patterns: []
+  rootkit:
+    enabled: true
+  network:
+    enabled: true
+  tools:
+    enabled: true

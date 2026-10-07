@@ -1,0 +1,126 @@
+{{- /*
+  The report is light-only, on purpose. A prefers-color-scheme block could
+  darken the surfaces but not the colours set inline on every row, so on a
+  dark-mode client the section names kept their dark ink on a dark background
+  and vanished. "only light" is the documented opt-out from client-side
+  auto-darkening; with an explicit background on every container and row it
+  stays legible wherever it lands. Every colour is also set inline, because
+  many mail clients strip <style>.
+*/ -}}
+{{- define "chip" -}}
+<span style="display:inline-block;padding:2px 9px 3px;border-radius:11px;background:{{(pal .).BG}};color:{{(pal .).FG}};font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap"><span style="color:{{(pal .).Dot}}">&#9679;</span>&nbsp;{{(pal .).Word}}</span>
+{{- end -}}
+{{- define "section" -}}
+<div style="margin-bottom:18px;border:1px solid {{T.Rule}};border-radius:6px;overflow:hidden">
+<div style="padding:9px 10px;background:{{T.Surface2}};border-bottom:1px solid {{T.Rule}}">
+<table role="presentation" style="width:100%;border-collapse:collapse"><tr>
+<td class="hc-ink" style="font-size:13px;font-weight:700;color:{{T.Ink}};background:{{T.Surface2}}">{{.Title}}</td>
+<td style="text-align:right;white-space:nowrap;background:{{T.Surface2}}">{{template "chip" .Status}}</td>
+</tr></table></div>
+<table role="presentation" style="width:100%;border-collapse:collapse">
+{{- range .Rows}}
+{{- if .Separator}}
+<tr><td colspan="2" style="background:{{T.Surface2}};padding:5px 10px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:{{T.Muted}}">{{.Label}}</td></tr>
+{{- else}}
+{{- $p := pal .Status}}{{$flag := .Status.Flagged}}
+{{- /* Colour only where it means something: painting 163 OK rows green is
+       what made the four rows that mattered invisible. */}}
+{{- $bg := T.Surface}}{{if $flag}}{{$bg = $p.BG}}{{end}}
+{{- $ink := T.Ink}}{{if $flag}}{{$ink = $p.FG}}{{end}}
+<tr class="{{if $flag}}hc-flag{{else}}hc-row{{end}}" style="background:{{$bg}}">
+<td class="hc-muted" style="padding:6px 10px;font-size:12px;color:{{T.Muted}};background:{{$bg}};vertical-align:top;width:34%;word-break:break-word">{{if $flag}}<span style="color:{{$p.Dot}};font-weight:700">&#9679;</span>&nbsp;{{end}}{{.Label}}</td>
+<td class="{{if not $flag}}hc-ink{{end}}" style="padding:6px 10px;font-size:12px;color:{{$ink}};background:{{$bg}};vertical-align:top;word-break:break-word">
+{{- if .Meter}}<span style="display:inline-block;width:96px;height:6px;border-radius:3px;background:{{$p.BG}};vertical-align:middle;margin-right:8px;overflow:hidden;line-height:6px;font-size:0"><span style="display:inline-block;width:{{pct .Meter}};height:6px;border-radius:3px;background:{{$p.Dot}}"></span></span>{{end}}
+{{- .Value}}
+{{- if .Delta}}<span style="color:{{T.Muted}};font-size:11px">&nbsp;&nbsp;{{.Delta}}</span>{{end}}
+{{- if .Detail}}<br><span style="font-size:10px;color:{{T.Muted}}">{{.Detail}}</span>{{end -}}
+</td></tr>
+{{- end}}
+{{- else}}
+<tr><td class="hc-muted" style="padding:8px 10px;font-size:12px;color:{{T.Muted}};background:{{T.Surface}}">No data</td></tr>
+{{- end}}
+</table></div>
+{{- end -}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="only light">
+<meta name="supported-color-schemes" content="only light">
+<title>Health Check — {{.Host}}</title>
+<style>
+  :root { color-scheme: only light; supported-color-schemes: only light; }
+  html, body { background: #ffffff !important; }
+  .hc-page { background: #f7f7f5 !important; }
+  .hc-card, .hc-row { background: #ffffff !important; }
+  .hc-row td { background: #ffffff !important; }
+  .hc-band { background: #f7f7f5 !important; }
+  .hc-ink { color: #1a1a19 !important; }
+  .hc-muted { color: #6b6a66 !important; }
+</style>
+</head>
+<body class="hc-page" style="margin:0;padding:0;background:{{T.Surface2}};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<div class="hc-card" style="max-width:860px;margin:0 auto;background:{{T.Surface}};border:1px solid {{T.Rule}}">
+
+<div class="hc-band" style="padding:18px 22px;border-bottom:1px solid {{T.Rule}};background:{{T.Surface2}}">
+<table role="presentation" style="width:100%;border-collapse:collapse"><tr>
+<td style="background:{{T.Surface2}}">
+<div class="hc-ink" style="font-size:19px;font-weight:700;color:{{T.Ink}};background:{{T.Surface2}}">{{.Host}}</div>
+<div class="hc-muted" style="font-size:11px;color:{{T.Muted}};margin-top:3px;background:{{T.Surface2}}">Linux Health Check {{.VersionLabel}} · {{.Stamp}}</div>
+</td>
+<td style="text-align:right;white-space:nowrap;background:{{T.Surface2}}">{{template "chip" .Overall}}</td>
+</tr></table>
+</div>
+
+<div style="padding:20px 22px;background:{{T.Surface}}">
+{{- with .Triage}}
+{{- $accent := pal 0}}{{if .NotifyAll}}{{$accent = pal 3}}{{end}}
+<div style="border:1px solid {{T.Rule}};border-left:4px solid {{$accent.Dot}};border-radius:6px;padding:14px 16px;margin-bottom:22px;background:{{T.Surface2}}">
+<div class="hc-ink" style="font-size:14px;font-weight:700;color:{{T.Ink}};background:{{T.Surface2}}">{{if .NotifyAll}}This report contains new findings — please read{{else}}Routine confirmation that the health check ran — no new findings{{end}}</div>
+<div class="hc-muted" style="font-size:11px;color:{{T.Muted}};margin-top:3px;background:{{T.Surface2}}">{{.Summary}}</div>
+{{- range groups .}}
+<div style="margin:10px 0 0">
+<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:{{(pal .Status).FG}};background:{{T.Surface2}}">{{.Title}}</div>
+<ul style="margin:5px 0 0 18px;padding:0;font-size:12px">
+{{- range .Items}}<li class="hc-ink" style="margin:3px 0;color:{{T.Ink}};background:{{T.Surface2}}">{{.}}</li>{{end}}
+</ul></div>
+{{- else}}
+<div style="font-size:12px;color:{{(pal 0).FG}};background:{{T.Surface2}}">Nothing requiring attention. This message confirms the health check ran successfully.</div>
+{{- end}}
+</div>
+{{- end}}
+
+<div style="margin-bottom:22px">
+<div class="hc-ink" style="font-size:13px;font-weight:700;color:{{T.Ink}};margin-bottom:8px;background:{{T.Surface}}">At a glance</div>
+<table role="presentation" style="width:100%;border-collapse:collapse"><tr>
+{{- range $i, $col := columns .Applicable}}
+<td style="vertical-align:top;width:50%{{if eq $i 0}};padding-right:16px{{end}}">
+<table role="presentation" style="width:100%;border-collapse:collapse">
+{{- range $col}}
+<tr class="hc-row" style="background:{{T.Surface}}"><td class="hc-ink" style="padding:5px 10px 5px 0;font-size:12px;color:{{T.Ink}};background:{{T.Surface}};border-bottom:1px solid {{T.Rule}}">{{.Title}}</td><td style="padding:5px 0;text-align:right;white-space:nowrap;background:{{T.Surface}};border-bottom:1px solid {{T.Rule}}">{{template "chip" .Status}}{{with .AttentionRows}}<span class="hc-muted" style="color:{{T.Muted}};font-size:11px">&nbsp;{{.}}</span>{{end}}</td></tr>
+{{- end}}
+</table></td>
+{{- end}}
+</tr></table>
+{{- with .Skipped}}
+<div class="hc-muted" style="margin-top:10px;font-size:11px;color:{{T.Muted}};background:{{T.Surface}}">Not present on this host: {{join . ", "}}</div>
+{{- end}}
+</div>
+
+<div class="hc-muted" style="margin:0 0 18px;padding:10px 0;border-top:1px solid {{T.Rule}};font-size:11px;color:{{T.Muted}};background:{{T.Surface}}">
+{{- range statuses}}<span style="margin-right:14px">{{template "chip" .}}</span>{{end -}}
+</div>
+
+{{- range .Applicable}}
+{{template "section" .}}
+{{- end}}
+</div>
+
+<div class="hc-band hc-muted" style="padding:10px 22px;font-size:10px;color:{{T.Muted}};background:{{T.Surface2}};border-top:1px solid {{T.Rule}};text-align:center">
+{{.Host}} · {{.Stamp}} · overall {{(pal .Overall).Word}}
+</div>
+
+</div>
+</body>
+</html>
