@@ -90,8 +90,8 @@ func TestOSAndCPUModel(t *testing.T) {
 
 func TestUptime(t *testing.T) {
 	cases := map[time.Duration]string{
-		30 * time.Second: "up 0 minutes",
-		61 * time.Minute: "up 1 hour, 1 minute",
+		30 * time.Second:       "up 0 minutes",
+		61 * time.Minute:       "up 1 hour, 1 minute",
 		(9*24 + 2) * time.Hour: "up 1 week, 2 days, 2 hours",
 	}
 	for d, want := range cases {

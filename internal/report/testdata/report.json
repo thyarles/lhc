@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "version": "1.2.3",
+  "host": "web01.example.com",
+  "generated_at": "2026-01-05T07:00:00Z",
+  "overall": "caution",
+  "triage": {
+    "notify_all": true,
+    "summary": "1 new",
+    "new": [
+      "Disk /var at 91%"
+    ],
+    "escalated": [],
+    "reminders": [],
+    "ongoing": [],
+    "resolved": [
+      "Service nginx.service failed"
+    ]
+  },
+  "sections": [
+    {
+      "name": "disk",
+      "title": "Disk Usage",
+      "status": "caution",
+      "applicable": true,
+      "rows": [
+        {
+          "label": "/",
+          "value": "41.0% used  (8 GB of 20 GB, 11 GB free)",
+          "status": "ok",
+          "meter": 41
+        },
+        {
+          "label": "/var",
+          "value": "91.0% used  (91 GB of 100 GB, 8 GB free)",
+          "status": "caution",
+          "meter": 91,
+          "delta": "+3.0 pts since last run"
+        }
+      ],
+      "alerts": [
+        {
+          "status": "caution",
+          "msg": "Disk /var at 91%"
+        }
+      ]
+    },
+    {
+      "name": "ports",
+      "title": "Listening Ports",
+      "status": "info",
+      "applicable": true,
+      "rows": [
+        {
+          "label": "Listening Sockets",
+          "value": "",
+          "status": "info",
+          "separator": true
+        },
+        {
+          "label": "",
+          "value": "tcp 0.0.0.0:22 users:((\"sshd\"))",
+          "status": "info"
+        }
+      ]
+    },
+    {
+      "name": "docker",
+      "title": "Docker Containers",
+      "status": "info",
+      "applicable": false,
+      "rows": [
+        {
+          "label": "Docker Containers",
+          "value": "Not installed (optional)",
+          "status": "info"
+        }
+      ]
+    },
+    {
+      "name": "system",
+      "title": "System Information",
+      "status": "ok",
+      "applicable": true,
+      "rows": [
+        {
+          "label": "Hostname",
+          "value": "web01.example.com",
+          "status": "ok"
+        },
+        {
+          "label": "Kernel",
+          "value": "5.14.0-427.el9.x86_64",
+          "status": "ok"
+        }
+      ]
+    }
+  ]
+}

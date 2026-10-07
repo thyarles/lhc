@@ -57,11 +57,12 @@ func (d Duration) String() string {
 	if d == 0 {
 		return "0"
 	}
-	s := time.Duration(d).String()
-	s = strings.TrimSuffix(s, "0s")
-	s = strings.TrimSuffix(s, "0m")
-	if s == "" {
-		return "0"
+	s := time.Duration(d).String() // e.g. 168h0m0s, 1h30m0s, 45s
+	if strings.HasSuffix(s, "m0s") {
+		s = strings.TrimSuffix(s, "0s")
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = strings.TrimSuffix(s, "0m")
 	}
 	return s
 }
