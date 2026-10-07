@@ -1,0 +1,5 @@
+# lhc configuration. Only what this host wants different from the defaults
+# needs to be here; every key below shows its default.
+checks:
+  system: { enabled: true }
+  cpu: { enabled: true, caution: 80, unhealthy: 95, load_caution_mult: 1.0, load_unhealthy_mult: 2.0 }
