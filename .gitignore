@@ -15,3 +15,6 @@ coverage.*
 .vscode/
 *.swp
 .DS_Store
+
+# Local agent instructions (they import AGENTS.md)
+CLAUDE.md

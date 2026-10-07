@@ -304,5 +304,5 @@ func openLog(path string) (*os.File, error) {
 	if fi, err := os.Stat(path); err == nil && fi.Size() > 5<<20 {
 		_ = os.Rename(path, path+".1")
 	}
-	return os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
+	return os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 }

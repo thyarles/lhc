@@ -5,9 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	"go.yaml.in/yaml/v3"
+
 	"github.com/thyarles/lhc-go/internal/check"
 	"github.com/thyarles/lhc-go/internal/checktest"
-	"go.yaml.in/yaml/v3"
 )
 
 // logsEnv is a host with journalctl, a syslog and an auth log, whose log

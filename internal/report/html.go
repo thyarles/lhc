@@ -52,7 +52,7 @@ var htmlTmpl = template.Must(template.New("report").Funcs(template.FuncMap{
 	"pal": Pal,
 	"T":   func() Theme { return theme },
 	"pct": func(p *float64) template.CSS {
-		return template.CSS(fmt.Sprintf("%.0f%%", math.Max(0, math.Min(100, *p))))
+		return template.CSS(fmt.Sprintf("%.0f%%", math.Max(0, math.Min(100, *p)))) //nolint:gosec // a formatted number, never user text
 	},
 	// The at-a-glance grid: two columns, the first one taking the odd one.
 	"columns": func(secs []*check.Section) [][]*check.Section {

@@ -45,8 +45,10 @@ const (
 
 var (
 	agoRE   = regexp.MustCompile(`(\d+|an?)\s+(second|minute|hour|day|week|month|year)s?\s+ago`)
-	agoHour = map[string]float64{"second": 1.0 / 3600, "minute": 1.0 / 60, "hour": 1, "day": 24,
-		"week": 168, "month": 730, "year": 8760}
+	agoHour = map[string]float64{
+		"second": 1.0 / 3600, "minute": 1.0 / 60, "hour": 1, "day": 24,
+		"week": 168, "month": 730, "year": 8760,
+	}
 	exitRE = regexp.MustCompile(`exited \((\d+)\)`)
 )
 

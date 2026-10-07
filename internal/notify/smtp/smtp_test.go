@@ -35,8 +35,10 @@ func server(t *testing.T, opts ...func(*smtptest.Server)) *smtptest.Server {
 }
 
 func sender(s *smtptest.Server, tlsMode string) *Sender {
-	return &Sender{Config: Config{Host: "127.0.0.1", Port: s.Port(), TLS: tlsMode, TLSSkipVerify: true,
-		HelloName: "web01.example.com", Timeout: 5 * time.Second}, Now: func() time.Time { return when }}
+	return &Sender{Config: Config{
+		Host: "127.0.0.1", Port: s.Port(), TLS: tlsMode, TLSSkipVerify: true,
+		HelloName: "web01.example.com", Timeout: 5 * time.Second,
+	}, Now: func() time.Time { return when }}
 }
 
 func TestPlainDelivery(t *testing.T) {

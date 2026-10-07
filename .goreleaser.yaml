@@ -1,0 +1,58 @@
+version: 2
+
+project_name: lhc
+
+before:
+  hooks:
+    - go mod tidy -diff
+
+builds:
+  - id: lhc
+    main: ./cmd/lhc
+    binary: lhc
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/thyarles/lhc-go/internal/version.Version={{.Version}}
+      - -X github.com/thyarles/lhc-go/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/thyarles/lhc-go/internal/version.Date={{.Date}}
+
+archives:
+  - id: lhc
+    formats: [tar.gz]
+    # Fixed names, so install.sh can use releases/latest/download/<name>
+    # without asking the (rate-limited) GitHub API which version is latest.
+    name_template: "lhc_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+release:
+  extra_files:
+    - glob: ./install.sh
+
+changelog:
+  use: git
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))?!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\(.+\))?!?:.+$'
+      order: 1
+    - title: Other
+      order: 999
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore\(deps\):'

@@ -461,8 +461,10 @@ func TestTextReportMarksARoutineRun(t *testing.T) {
 }
 
 func TestEveryTriageGroupAppearsWhenPopulated(t *testing.T) {
-	tr := &Triage{NotifyAll: true, New: []string{"a new thing"}, Escalated: []string{"a worse thing"},
-		Reminders: []string{"an old thing"}, Ongoing: []string{"a known thing"}, Resolved: []string{"a fixed thing"}}
+	tr := &Triage{
+		NotifyAll: true, New: []string{"a new thing"}, Escalated: []string{"a worse thing"},
+		Reminders: []string{"an old thing"}, Ongoing: []string{"a known thing"}, Resolved: []string{"a fixed thing"},
+	}
 	out := Text(model("h", tr, diskSections()...))
 	for _, p := range []string{"a new thing", "a worse thing", "an old thing", "a known thing", "a fixed thing"} {
 		if !strings.Contains(out, p) {
@@ -513,8 +515,10 @@ func goldenModel() *Model {
 	ports.Add("", "tcp 0.0.0.0:22 users:((\"sshd\"))", check.Info)
 	docker := check.NewSection("docker", "Docker Containers")
 	docker.NotApplicable("Not installed (optional)")
-	return model("web01.example.com", &Triage{NotifyAll: true, Summary: "1 new", New: []string{"Disk /var at 91%"},
-		Resolved: []string{"Service nginx.service failed"}}, sys, disk, ports, docker)
+	return model("web01.example.com", &Triage{
+		NotifyAll: true, Summary: "1 new", New: []string{"Disk /var at 91%"},
+		Resolved: []string{"Service nginx.service failed"},
+	}, sys, disk, ports, docker)
 }
 
 func golden(t *testing.T, name, got string) {
