@@ -65,7 +65,8 @@ func TestZombieThresholdsComeFromTheConfig(t *testing.T) {
 
 func TestZombiesWithStatModifiersAreCounted(t *testing.T) {
 	e := checktest.NewEnv(t, Check{}, nil)
-	e.Fake.Expect("ps aux", strings.Join([]string{psHeader,
+	e.Fake.Expect("ps aux", strings.Join([]string{
+		psHeader,
 		psLine(10, "0.0", "0.0", "Z", "a"),
 		psLine(11, "0.0", "0.0", "Z+", "b"),
 		psLine(12, "0.0", "0.0", "Zs", "c"),

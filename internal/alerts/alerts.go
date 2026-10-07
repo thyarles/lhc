@@ -165,8 +165,10 @@ func Evaluate(alerts []check.Alert, store state.Store, p Policy, now time.Time) 
 
 		var e Entry
 		if !known {
-			e = Entry{Fingerprint: fp, Status: a.Status, Msg: a.Msg,
-				FirstSeen: now, LastSeen: now, NotifiedAt: now, NotifiedStatus: a.Status}
+			e = Entry{
+				Fingerprint: fp, Status: a.Status, Msg: a.Msg,
+				FirstSeen: now, LastSeen: now, NotifiedAt: now, NotifiedStatus: a.Status,
+			}
 			d.New = append(d.New, a)
 		} else {
 			e = old

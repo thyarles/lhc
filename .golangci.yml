@@ -1,0 +1,80 @@
+version: "2"
+
+run:
+  timeout: 5m
+  build-tags: [e2e]
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - errorlint
+    - gocritic
+    - revive
+    - misspell
+    - unconvert
+    - unparam
+    - noctx
+    - gosec
+    - depguard
+    - forbidigo
+  settings:
+    depguard:
+      rules:
+        # The allowlist: standard library, this module, cobra (and pflag),
+        # yaml, golang.org/x. Anything else needs a deliberate change here AND
+        # in scripts/check-deps.sh.
+        main:
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/thyarles/lhc-go
+            - github.com/spf13/cobra
+            - github.com/spf13/pflag
+            - go.yaml.in/yaml/v3
+            - golang.org/x
+    forbidigo:
+      analyze-types: true
+      forbid:
+        # Checks must go through runner.Runner so tests can fake the host.
+        - pattern: ^exec\.(Command|CommandContext|LookPath)$
+          msg: run commands through runner.Runner
+        - pattern: ^os\.Hostname$
+          msg: use host.Kernel / check.Env.Host
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+    gosec:
+      excludes:
+        - G204 # subprocess with variable args: the runner exists to do exactly this
+        - G304 # file inclusion via variable: reading admin-chosen paths is the job
+        - G306 # report files are 0640 on purpose
+        - G301 # state dirs 0750
+        - G703 # paths come from the admin (--config, paths:), not from untrusted input
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      - path: internal/runner/
+        linters: [forbidigo]
+      - path: internal/host/
+        linters: [forbidigo]
+      - path: _test\.go
+        linters: [gosec, noctx, unparam, errcheck, forbidigo]
+      - path: internal/notify/smtp/smtptest/
+        linters: [gosec, noctx]
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/thyarles/lhc-go

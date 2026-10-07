@@ -1,0 +1,77 @@
+name: release
+
+# Every merge to main cuts a release. The version comes from the commit
+# messages (conventional commits):
+#   feat: ...        -> minor
+#   anything!: ...   -> major
+#   everything else  -> patch
+# Nothing is committed back to main: the version is injected at build time,
+# and install.sh downloads releases/latest/download/..., which always follows
+# the newest release.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    uses: ./.github/workflows/check.yml
+
+  release:
+    name: Tag and release
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Version
+        id: version
+        uses: paulhatch/semantic-version@9f72830310d5ed81233b641ee59253644cd8a8fc # v6.0.2
+        with:
+          tag_prefix: "v"
+          bump_each_commit: false
+          # The action's defaults look for literal "(MAJOR)"/"(MINOR)"
+          # markers. These read the conventional-commit prefixes instead.
+          major_pattern: '/^\w+(\(.+\))?!:/'
+          minor_pattern: '/^feat(\(.+\))?:/'
+          version_format: "${major}.${minor}.${patch}"
+
+      - name: Tag
+        id: tag
+        env:
+          TAG: ${{ steps.version.outputs.version_tag }}
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists. Skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "$TAG"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.tag.outputs.skip == 'false'
+        with:
+          go-version-file: go.mod
+
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        if: steps.tag.outputs.skip == 'false'
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
