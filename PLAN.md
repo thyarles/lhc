@@ -1,6 +1,6 @@
 # Plan: rewrite linux-health-check in Go as `lhc`
 
-**Status (2026-09-24):** plan approved, nothing implemented yet. Next step is milestone 0 (clean slate + environment), then milestone 1.
+**Status (2026-10-07):** milestones 0–4 are implemented and committed locally; all 21 checks are ported, and `make check`, `make e2e` and a smoke run on debian:12, rockylinux:9, centos:7 and opensuse/leap:15 containers are green. Not done yet: creating the GitHub repository and the first release (needs the owner's go-ahead), the RHEL 7 VM check, the week-long side-by-side runs against the Python version (milestones 2 and 4), and milestone 5 (cutover). See "Implementation notes" at the end for where the build differs from this plan.
 
 ## Context
 
@@ -224,3 +224,26 @@ Implementation order is 0 then 1. Neither starts in this session (see the scope 
 3. `./lhc config init --config /tmp/x.yaml && ./lhc config validate --config /tmp/x.yaml && ./lhc report --format text|html|json` produce the system+cpu sections; JSON matches the documented shape; goldens match.
 4. Push to GitHub: `check.yml` green on the PR; merge to main produces `v0.1.0` with `lhc_linux_amd64.tar.gz`, `lhc_linux_arm64.tar.gz`, `checksums.txt`.
 5. On a RHEL 7 host (kernel 3.10, systemd 219): download the release, run `lhc version` and `lhc report`; confirm `lhc install` chooses cron.
+
+---
+
+## Implementation notes (2026-10-07)
+
+Where the implementation differs from the plan above, and why:
+
+- **`check.Meta`, not `check.Info`.** `Info` is already the name of a status constant.
+- **State is keyed.** The plan had `Load(out)`/`Save(v)`. Several checks keep more than one baseline (kubernetes keeps four), so `State.Load(key, &out)`/`Save(key, v)` write one file per check: `<state>/<check>.json`.
+- **The Runner also reads files** (`ReadFile`, `ReadDir`, `Exists`, `IsSocket`, `Readable`). That way /proc, /etc and log files are fakeable in tests too.
+- **`AGENTS.md` replaces `CLAUDE.md` in git.** It is the vendor-neutral name. A git-ignored local `CLAUDE.md` holds `@AGENTS.md`, so the repository does not name the AI tool used.
+- **`kubernetes.scope: off` is gone.** Every check has `enabled: false` instead.
+- **New settings:** `smtp.tls_skip_verify`; `logs.extra_patterns` for site-specific patterns; `paths.*`; `reports.keep`.
+- **Delivery failure exits 2.** It is logged, and the alert history is not committed, as before.
+- **Scheduled runs write their own log** (`paths.log_file`, rotated at 5 MB). A state-directory lock stops two runs from overlapping.
+- **The alert engine** now reports a condition as cleared again if it comes back and clears a second time. The Python version stayed silent the second time.
+- **Many parsers moved from awk/grep pipelines into Go**, and several Python bugs were fixed along the way. Each one has a test:
+  - zombies in `Z+`/`Zs` state were missed;
+  - the root-login date check took "Jan 1" to mean "Jan 15";
+  - a partial SUID scan re-baselined, flagging everything it missed as new;
+  - the netstat UDP column was misread;
+  - Docker disk usage labels were wrong.
+- **The smoke CI job uses `docker run`**, not a job container. GitHub's actions cannot start inside centos:7 because its glibc is too old.
