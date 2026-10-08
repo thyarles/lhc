@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/checktest"
+	"github.com/thyarles/lhc/internal/checktest"
 )
 
 var ctx = context.Background()

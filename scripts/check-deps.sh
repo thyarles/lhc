@@ -11,7 +11,7 @@ allowed='^(github\.com/spf13/cobra|github\.com/spf13/pflag|github\.com/inconshre
 
 # What go.mod requires, and what the binary actually links. (`go list -m all`
 # would also list modules cobra needs only for its own docs and tests.)
-required=$(go mod edit -json | sed -n 's/.*"Path": "\(.*\)".*/\1/p' | grep -v '^github.com/thyarles/lhc-go$' || true)
+required=$(go mod edit -json | sed -n 's/.*"Path": "\(.*\)".*/\1/p' | grep -v '^github.com/thyarles/lhc$' || true)
 linked=$(go list -deps -f '{{with .Module}}{{if not .Main}}{{.Path}}{{end}}{{end}}' ./... | sort -u)
 bad=$(printf '%s\n%s\n' "$required" "$linked" | sort -u | grep -v '^$' | grep -Ev "$allowed" || true)
 if [ -n "$bad" ]; then

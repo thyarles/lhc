@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/notify"
-	"github.com/thyarles/lhc-go/internal/notify/smtp/smtptest"
+	"github.com/thyarles/lhc/internal/notify"
+	"github.com/thyarles/lhc/internal/notify/smtp/smtptest"
 )
 
 var when = time.Date(2026, 1, 5, 7, 0, 0, 0, time.UTC)

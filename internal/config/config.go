@@ -19,7 +19,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/thyarles/lhc-go/internal/check"
+	"github.com/thyarles/lhc/internal/check"
 )
 
 // Example is the commented starter file written by `lhc config init`. A test

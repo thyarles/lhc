@@ -31,7 +31,7 @@ linters:
           list-mode: strict
           allow:
             - $gostd
-            - github.com/thyarles/lhc-go
+            - github.com/thyarles/lhc
             - github.com/spf13/cobra
             - github.com/spf13/pflag
             - go.yaml.in/yaml/v3
@@ -77,4 +77,4 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/thyarles/lhc-go
+        - github.com/thyarles/lhc

@@ -1,4 +1,4 @@
-module github.com/thyarles/lhc-go
+module github.com/thyarles/lhc
 
 go 1.27.1
 

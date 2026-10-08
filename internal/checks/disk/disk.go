@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/thyarles/lhc-go/internal/check"
+	"github.com/thyarles/lhc/internal/check"
 )
 
 func init() { check.Register(Check{}) }

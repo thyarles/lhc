@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thyarles/lhc-go/internal/config"
-	"github.com/thyarles/lhc-go/internal/runner"
-	"github.com/thyarles/lhc-go/internal/schedule"
+	"github.com/thyarles/lhc/internal/config"
+	"github.com/thyarles/lhc/internal/runner"
+	"github.com/thyarles/lhc/internal/schedule"
 )
 
 func newInstallCmd(a *app) *cobra.Command {

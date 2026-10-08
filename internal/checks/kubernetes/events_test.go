@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thyarles/lhc-go/internal/check"
-	"github.com/thyarles/lhc-go/internal/checktest"
+	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/checktest"
 )
 
 func events(t *testing.T, e *checktest.Env, lines ...string) *check.Section {

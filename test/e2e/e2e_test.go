@@ -18,10 +18,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thyarles/lhc-go/internal/config"
-	"github.com/thyarles/lhc-go/internal/notify/smtp/smtptest"
+	"github.com/thyarles/lhc/internal/config"
+	"github.com/thyarles/lhc/internal/notify/smtp/smtptest"
 
-	_ "github.com/thyarles/lhc-go/internal/checks/all"
+	_ "github.com/thyarles/lhc/internal/checks/all"
 )
 
 var binary string

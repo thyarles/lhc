@@ -17,9 +17,9 @@ builds:
     flags: [-trimpath]
     ldflags:
       - -s -w
-      - -X github.com/thyarles/lhc-go/internal/version.Version={{.Version}}
-      - -X github.com/thyarles/lhc-go/internal/version.Commit={{.ShortCommit}}
-      - -X github.com/thyarles/lhc-go/internal/version.Date={{.Date}}
+      - -X github.com/thyarles/lhc/internal/version.Version={{.Version}}
+      - -X github.com/thyarles/lhc/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/thyarles/lhc/internal/version.Date={{.Date}}
 
 archives:
   - id: lhc

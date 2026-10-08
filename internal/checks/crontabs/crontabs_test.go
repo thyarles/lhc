@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thyarles/lhc-go/internal/check"
-	"github.com/thyarles/lhc-go/internal/checktest"
+	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/checktest"
 )
 
 const etcCrontab = `# /etc/crontab: system-wide crontab

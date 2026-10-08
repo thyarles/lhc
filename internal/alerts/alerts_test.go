@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/check"
-	"github.com/thyarles/lhc-go/internal/state"
+	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/state"
 )
 
 // The de-duplication state machine decides whether a finding interrupts the

@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thyarles/lhc-go/internal/runner"
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 func newPathsCmd(a *app) *cobra.Command {

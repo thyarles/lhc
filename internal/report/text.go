@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/thyarles/lhc-go/internal/check"
-	tw "github.com/thyarles/lhc-go/internal/textwrap"
+	"github.com/thyarles/lhc/internal/check"
+	tw "github.com/thyarles/lhc/internal/textwrap"
 )
 
 // W is the width every line of the text report fits inside.

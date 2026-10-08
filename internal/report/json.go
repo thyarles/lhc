@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/check"
+	"github.com/thyarles/lhc/internal/check"
 )
 
 // SchemaVersion of the JSON report. Bump on an incompatible change.

@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/thyarles/lhc-go/internal/check"
+	"github.com/thyarles/lhc/internal/check"
 )
 
 type node struct {

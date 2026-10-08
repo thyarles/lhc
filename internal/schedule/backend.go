@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/config"
-	"github.com/thyarles/lhc-go/internal/runner"
+	"github.com/thyarles/lhc/internal/config"
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 // Backend is what starts scheduled runs.
@@ -75,7 +75,7 @@ func ServiceUnit(j Job) string {
 	return fmt.Sprintf(`# Managed by lhc install. Changes are overwritten on the next install.
 [Unit]
 Description=Linux Health Check (lhc)
-Documentation=https://github.com/thyarles/lhc-go
+Documentation=https://github.com/thyarles/lhc
 Wants=network-online.target
 After=network-online.target
 

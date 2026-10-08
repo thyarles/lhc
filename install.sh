@@ -3,7 +3,7 @@
 # One-call installer for lhc (Linux Health Check).
 #
 #   # the newest release
-#   curl -fsSL https://raw.githubusercontent.com/thyarles/lhc-go/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/thyarles/lhc/main/install.sh | bash
 #
 #   # a specific release, with settings and a schedule
 #   curl -fsSL .../install.sh | bash -s -- v1.2.0 \
@@ -22,12 +22,12 @@
 # No git, no Go, and no GitHub API: releases/latest/download/... is a plain
 # redirect, so a shared office NAT cannot exhaust an API rate limit.
 #
-# Env: REPO_SLUG (default thyarles/lhc-go), BIN_DIR (default /usr/local/bin),
+# Env: REPO_SLUG (default thyarles/lhc), BIN_DIR (default /usr/local/bin),
 #      DOWNLOADER=curl|wget to force one, BASE_URL to fetch the archive and
 #      checksums.txt from an internal mirror instead of GitHub.
 set -euo pipefail
 
-REPO_SLUG="${REPO_SLUG:-thyarles/lhc-go}"
+REPO_SLUG="${REPO_SLUG:-thyarles/lhc}"
 BIN_DIR="${BIN_DIR:-/usr/local/bin}"
 
 say() { printf '\n==> %s\n' "$*"; }

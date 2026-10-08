@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"github.com/thyarles/lhc-go/internal/cli"
+	"github.com/thyarles/lhc/internal/cli"
 )
 
 func main() { os.Exit(cli.Execute()) }

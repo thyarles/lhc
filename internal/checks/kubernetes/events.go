@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/check"
+	"github.com/thyarles/lhc/internal/check"
 )
 
 // Warning events that describe the NODE running out of something. Everything

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/alerts"
-	"github.com/thyarles/lhc-go/internal/check"
+	"github.com/thyarles/lhc/internal/alerts"
+	"github.com/thyarles/lhc/internal/check"
 )
 
 // Who receives which message, and what the subject tells them. The original

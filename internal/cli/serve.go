@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thyarles/lhc-go/internal/config"
-	"github.com/thyarles/lhc-go/internal/schedule"
+	"github.com/thyarles/lhc/internal/config"
+	"github.com/thyarles/lhc/internal/schedule"
 )
 
 func newServeCmd(a *app) *cobra.Command {

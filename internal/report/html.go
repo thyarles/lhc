@@ -8,7 +8,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/thyarles/lhc-go/internal/check"
+	"github.com/thyarles/lhc/internal/check"
 )
 
 // Palette for one status.

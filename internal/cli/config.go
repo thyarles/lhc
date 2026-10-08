@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thyarles/lhc-go/internal/config"
-	"github.com/thyarles/lhc-go/internal/state"
+	"github.com/thyarles/lhc/internal/config"
+	"github.com/thyarles/lhc/internal/state"
 )
 
 func newConfigCmd(a *app) *cobra.Command {

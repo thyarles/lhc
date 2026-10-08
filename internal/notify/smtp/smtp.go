@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/notify"
+	"github.com/thyarles/lhc/internal/notify"
 )
 
 // Config is the smtp: block of the config.
