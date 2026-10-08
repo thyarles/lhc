@@ -29,7 +29,7 @@ Same checks and the same alert behaviour, with no interpreter to install.
 | services | failed systemd units, units stuck activating across two runs |
 | docker | fresh crashes and restart loops (old stopped containers are not news) |
 | kubernetes | node readiness/pressure/cordons, broken pods, restart growth, lost PVCs, node-level events |
-| updates | pending (and security) updates: dnf, yum, apt, zypper |
+| updates | pending (and security) updates: dnf, yum, apt, zypper; **a reboot waiting** for an installed kernel or core library |
 | users | logged-in users, root logins **today** |
 | auth | failed SSH attempts today, top sources, sudo use |
 | fail2ban | jails and bans (bans are fail2ban working, not a problem) |
@@ -51,7 +51,7 @@ Every report opens with the same **vital signs** strip, in the same order on
 every host, so the numbers people look for first are always in one place:
 
 ```
-Up 132 days · Updates 14 (3 security) · Disk 71% /var · RAM 45% · Load 0.42 / 8 cores
+Up 132 days · Updates 14 (3 security) · ! Reboot required · Disk 71% /var · RAM 45% · Load 0.42 / 8 cores
 ```
 
 A value is coloured (and marked `!` or `✕`) only when its check flagged it. A

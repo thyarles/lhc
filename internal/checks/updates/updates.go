@@ -22,6 +22,9 @@ type Config struct {
 	check.Toggle    `yaml:",inline"`
 	Caution         int `yaml:"caution"`
 	SecurityCaution int `yaml:"security_caution"`
+	// A pending reboot always shows; it alerts once it has waited longer
+	// than this many days. 0 never alerts.
+	RebootCautionDays int `yaml:"reboot_caution_days"`
 }
 
 type Check struct{}
@@ -30,12 +33,15 @@ func (Check) Meta() check.Meta {
 	return check.Meta{Name: "updates", Title: "Pending Updates", Order: 90}
 }
 
-func (Check) Defaults() check.Config { return &Config{Toggle: check.On} }
+func (Check) Defaults() check.Config { return &Config{Toggle: check.On, RebootCautionDays: 14} }
 
 // Validate rejects negative thresholds.
 func (c *Config) Validate() error {
 	if c.Caution < 0 || c.SecurityCaution < 0 {
 		return fmt.Errorf("caution and security_caution must be 0 (off) or positive")
+	}
+	if c.RebootCautionDays < 0 {
+		return fmt.Errorf("reboot_caution_days must be 0 (never alert) or positive")
 	}
 	return nil
 }
@@ -47,6 +53,14 @@ const timeout = 90 * time.Second
 func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	cfg := env.Config.(*Config)
 	s := check.NewSection("updates", c.Meta().Title)
+	pending(ctx, s, env, cfg)
+	// Even when the mirrors are unreachable: a reboot waits on what is
+	// already installed.
+	reboot(ctx, s, env, cfg)
+	return s
+}
+
+func pending(ctx context.Context, s *check.Section, env *check.Env, cfg *Config) {
 	r := env.Runner
 	pm := env.Host.PkgManager
 
@@ -60,7 +74,7 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 		res := r.Run(ctx, pm, "check-update", "-q")
 		if failed(res, 0, 100) {
 			unknown(s, res)
-			return s
+			return
 		}
 		n := countRPM(res.Stdout)
 		fact(s, n, -1, total(s, cfg, n))
@@ -70,7 +84,7 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 		res := r.Run(ctx, "apt-get", "-s", "upgrade")
 		if failed(res, 0) {
 			unknown(s, res)
-			return s
+			return
 		}
 		all, sec := countApt(res.Stdout)
 		fact(s, all, sec, check.Worse(total(s, cfg, all), security(s, cfg, sec)))
@@ -79,7 +93,7 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 		res := r.Run(ctx, "zypper", "--non-interactive", "--quiet", "list-updates")
 		if failed(res, 0) {
 			unknown(s, res)
-			return s
+			return
 		}
 		n, sec := countZypperUpdates(res.Stdout), -1
 		st := total(s, cfg, n)
@@ -94,7 +108,6 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 		s.Add("Package Manager", "Not detected", check.Info)
 		s.Fact("updates", "unknown", check.Info)
 	}
-	return s
 }
 
 func failed(res runner.Result, okCodes ...int) bool {
