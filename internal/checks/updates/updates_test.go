@@ -85,7 +85,7 @@ func TestAptRefreshesThenSimulatesOnce(t *testing.T) {
 	e := newEnv(t, "apt-get", nil)
 	e.Fake.Expect("apt-get -s upgrade", aptSim())
 	e.Run(Check{})
-	calls := e.Fake.Calls()
+	calls := slices.DeleteFunc(e.Fake.Calls(), func(c string) bool { return !strings.HasPrefix(c, "apt-get ") })
 	if !slices.Equal(calls, []string{"apt-get update -qq", "apt-get -s upgrade"}) {
 		t.Fatalf("calls: %q", calls)
 	}

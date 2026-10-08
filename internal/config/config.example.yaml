@@ -136,6 +136,10 @@ checks:
     caution: 0
     # The same, for security updates (apt and zypper only).
     security_caution: 0
+    # An installed update that waits for a reboot (usually a kernel) is
+    # always shown. It also raises an alert once it has been pending longer
+    # than this many days. 0 = show it, never alert.
+    reboot_caution_days: 14
   users:
     enabled: true
   auth:
