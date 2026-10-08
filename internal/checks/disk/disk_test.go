@@ -330,3 +330,23 @@ func TestValidate(t *testing.T) {
 		t.Fatalf("bad glob: %v", err)
 	}
 }
+
+func TestTheDiskFactIsTheFullestListedMount(t *testing.T) {
+	e := newEnv(t, nil, df(
+		"/dev/sda1 10000000 4100000 5900000 41% /",
+		"/dev/sdb1 10000000 7100000 2900000 71% /var",
+		"/dev/sdc1 10000000 2000000 8000000 20% /home",
+		// Ignored container storage never wins, however full.
+		"/dev/sdd1 10000000 9900000 100000 99% /var/lib/docker/overlay2/abc",
+	))
+	got := checktest.Facts(e.Run(Check{}))["disk_max"]
+	if got != (check.Fact{Key: "disk_max", Value: "71% /var", Status: check.OK}) {
+		t.Fatalf("disk_max fact = %+v", got)
+	}
+}
+
+func TestNoListedMountNoDiskFact(t *testing.T) {
+	if _, ok := checktest.Facts(newEnv(t, nil, df()).Run(Check{}))["disk_max"]; ok {
+		t.Fatal("a fact without a filesystem")
+	}
+}

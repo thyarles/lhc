@@ -67,6 +67,18 @@
 <table role="presentation" style="width:100%;border-collapse:collapse"><tr>
 <td style="background:{{T.Surface2}}">
 <div class="hc-ink" style="font-size:19px;font-weight:700;color:{{T.Ink}};background:{{T.Surface2}}">{{.Host}}</div>
+{{- with .Vitals}}
+{{- /* Vital signs: the same facts, in the same order, on every host. Each
+       fact stays on one line; the strip wraps only between facts. Colour
+       only where it means something, and always with the glyph. */}}
+<div class="hc-ink" style="font-size:12px;color:{{T.Ink}};margin-top:6px;line-height:1.7;background:{{T.Surface2}}">
+{{- range $i, $f := .}}
+{{- if $i}}<span class="hc-muted" style="color:{{T.Muted}}"> · </span>{{end}}
+{{- if $f.Status.Flagged}}{{$p := pal $f.Status}}<span style="white-space:nowrap;padding:1px 6px;border-radius:3px;font-weight:700;color:{{$p.FG}};background:{{$p.BG}}">{{$p.Sym}} {{vital $f}}</span>
+{{- else}}<span style="white-space:nowrap">{{vital $f}}</span>{{end}}
+{{- end}}
+</div>
+{{- end}}
 <div class="hc-muted" style="font-size:11px;color:{{T.Muted}};margin-top:3px;background:{{T.Surface2}}">Linux Health Check {{.VersionLabel}} · {{.Stamp}}</div>
 </td>
 <td style="text-align:right;white-space:nowrap;background:{{T.Surface2}}">{{template "chip" .Overall}}</td>

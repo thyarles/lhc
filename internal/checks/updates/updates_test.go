@@ -76,6 +76,9 @@ func TestAptSecurityCountIgnoresConfLines(t *testing.T) {
 	if got := checktest.Rows(s)["Pending Updates"].Value; got != "82" {
 		t.Fatalf("Pending Updates = %q", got)
 	}
+	if got := checktest.Facts(s)["updates"]; got.Value != "82 (45 security)" || got.Status != check.Info {
+		t.Fatalf("updates fact = %+v", got)
+	}
 }
 
 func TestAptRefreshesThenSimulatesOnce(t *testing.T) {
@@ -156,6 +159,9 @@ func TestNoUpdatesIsOK(t *testing.T) {
 	if got := checktest.Rows(s)["Pending Updates"]; got.Status != check.OK || got.Value != "0" {
 		t.Fatalf("Pending Updates row: %+v", got)
 	}
+	if got := checktest.Facts(s)["updates"]; got.Value != "0" || got.Status != check.OK {
+		t.Fatalf("updates fact = %+v", got)
+	}
 }
 
 func TestUnreachableRepositoriesAreNotReportedAsZero(t *testing.T) {
@@ -166,6 +172,10 @@ func TestUnreachableRepositoriesAreNotReportedAsZero(t *testing.T) {
 	row := checktest.Rows(s)["Pending Updates"]
 	if row.Value != "Could not be determined" || !strings.Contains(row.Detail, "Failed to download metadata") {
 		t.Fatalf("Pending Updates row: %+v", row)
+	}
+	// "0" would claim the host is patched; the strip says it does not know.
+	if got := checktest.Facts(s)["updates"]; got.Value != "unknown" {
+		t.Fatalf("updates fact = %+v", got)
 	}
 }
 
@@ -200,6 +210,9 @@ func TestZypperCountsUpdatesAndSecurityPatches(t *testing.T) {
 	rows := checktest.Rows(s)
 	if rows["Pending Updates"].Value != "3" || rows["Security Updates"].Value != "2" {
 		t.Fatalf("rows: %+v", s.Rows)
+	}
+	if got := checktest.Facts(s)["updates"].Value; got != "3 (2 security)" {
+		t.Fatalf("updates fact = %q", got)
 	}
 }
 
@@ -240,5 +253,15 @@ func TestValidate(t *testing.T) {
 	c.SecurityCaution = -1
 	if c.Validate() == nil {
 		t.Fatal("negative threshold accepted")
+	}
+}
+
+func TestTheUpdatesFactFollowsAConfiguredCaution(t *testing.T) {
+	e := newEnv(t, "dnf", &Config{Toggle: check.On, Caution: 5})
+	e.Fake.Expect("dnf check-update", rpmUpdates(14)).Code(100)
+	got := checktest.Facts(e.Run(Check{}))["updates"]
+	// dnf check-update does not tell security updates apart: no "(0 security)".
+	if got.Value != "14" || got.Status != check.Caution {
+		t.Fatalf("updates fact = %+v", got)
 	}
 }

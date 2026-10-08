@@ -50,7 +50,7 @@ func model(host string, triage *Triage, secs ...*check.Section) *Model {
 	for _, s := range secs {
 		overall = check.Worse(overall, s.Status)
 	}
-	return &Model{Host: host, Version: "1.2.3", Generated: when, Overall: overall, Sections: Order(secs), Triage: triage}
+	return &Model{Host: host, Version: "1.2.3", Generated: when, Overall: overall, Sections: Order(secs), Vitals: Vitals(secs), Triage: triage}
 }
 
 func text(secs ...*check.Section) string { return Text(model("web01.example.com", nil, secs...)) }
@@ -484,7 +484,7 @@ func TestJSONHasTheDocumentedShape(t *testing.T) {
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"schema", "version", "host", "generated_at", "overall", "triage", "sections"} {
+	for _, k := range []string{"schema", "version", "host", "generated_at", "overall", "vitals", "triage", "sections"} {
 		if _, ok := got[k]; !ok {
 			t.Errorf("key %q missing", k)
 		}
@@ -499,17 +499,160 @@ func TestJSONHasTheDocumentedShape(t *testing.T) {
 	}
 }
 
+// ── vital signs ─────────────────────────────────────────────────────────────
+
+func withFacts(title string, facts ...check.Fact) *check.Section {
+	s := sec(title, row{"x", "1", check.OK})
+	for _, f := range facts {
+		s.Fact(f.Key, f.Value, f.Status)
+	}
+	return s
+}
+
+func allVitals(mount string) []*check.Section {
+	return []*check.Section{
+		withFacts("CPU Load", check.Fact{Key: "load", Value: "0.42 / 8 cores"}),
+		withFacts("Disk Usage", check.Fact{Key: "disk_max", Value: "97% " + mount, Status: check.Unhealthy}),
+		withFacts("Pending Updates", check.Fact{Key: "updates", Value: "1400 (300 security)", Status: check.Info},
+			check.Fact{Key: "reboot_required", Value: "yes", Status: check.Caution}),
+		withFacts("Memory Usage", check.Fact{Key: "ram", Value: "45%"}),
+		withFacts("System Information", check.Fact{Key: "uptime", Value: "1320 days"}),
+	}
+}
+
+func keys(fs []check.Fact) []string {
+	var out []string
+	for _, f := range fs {
+		out = append(out, f.Key)
+	}
+	return out
+}
+
+func TestVitalsKeepTheirOrderWhateverTheSectionOrder(t *testing.T) {
+	want := []string{"uptime", "updates", "reboot_required", "disk_max", "ram", "load"}
+	secs := allVitals("/var")
+	if got := keys(Vitals(secs)); !slices.Equal(got, want) {
+		t.Fatal(got)
+	}
+	slices.Reverse(secs)
+	if got := keys(Vitals(secs)); !slices.Equal(got, want) {
+		t.Fatal(got)
+	}
+	// Sorted worst first, the disk section leads; the strip does not move.
+	if got := keys(model("h", nil, secs...).Vitals); !slices.Equal(got, want) {
+		t.Fatal(got)
+	}
+}
+
+func TestADisabledCheckJustDropsItsFact(t *testing.T) {
+	secs := allVitals("/var")[1:] // no CPU section
+	if got := keys(Vitals(secs)); slices.Contains(got, "load") || len(got) != 5 {
+		t.Fatal(got)
+	}
+	if got := Vitals(nil); got == nil || len(got) != 0 {
+		t.Fatalf("want an empty list, got %#v", got)
+	}
+}
+
+func TestTheVitalsStripSitsUnderTheOverallStatus(t *testing.T) {
+	m := model("h", nil, allVitals("/var")...)
+	lines := strings.Split(Text(m), "\n")
+	if !strings.HasPrefix(lines[3], "  Overall Status:") {
+		t.Fatalf("header moved: %q", lines[:5])
+	}
+	// It breaks between facts, never inside one.
+	if lines[4] != "  Up 1320 days · Updates 1400 (300 security) · ! Reboot required" ||
+		lines[5] != "  ✕ Disk 97% /var · RAM 45% · Load 0.42 / 8 cores" || lines[6] != strings.Repeat("=", W) {
+		t.Fatalf("strip:\n%s", strings.Join(lines[:8], "\n"))
+	}
+}
+
+func TestTheVitalsStripFitsTheWidthEvenWithALongMount(t *testing.T) {
+	m := model(longHost, nil, allVitals("/"+strings.Repeat("very-long-mount-point/", 6))...)
+	out := Text(m)
+	for _, l := range strings.Split(out, "\n") {
+		if tw.Len(l) > W {
+			t.Fatalf("%d cols: %q", tw.Len(l), l)
+		}
+	}
+	if !strings.Contains(out, "✕ Disk 97% /very-long-mount-point/") || !strings.Contains(out, "…") {
+		t.Fatal("the mount should be cut with an ellipsis, keeping its start")
+	}
+}
+
+func TestHTMLShowsTheVitalsAndFlagsOnlyWhatMatters(t *testing.T) {
+	out := stdhtml.UnescapeString(html(t, model("h", nil, allVitals("/var")...)))
+	for _, want := range []string{"Up 1320 days", "Updates 1400 (300 security)", "! Reboot required", "✕ Disk 97% /var", "RAM 45%", "Load 0.42 / 8 cores"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%q missing", want)
+		}
+	}
+	if !strings.Contains(out, string(Pal(check.Caution).BG)+`">! Reboot required`) {
+		t.Error("the reboot fact is not tinted")
+	}
+	if strings.Contains(out, "· Up") || strings.Contains(out, "! RAM") {
+		t.Error("an OK fact carries a mark")
+	}
+}
+
+func TestHTMLWithoutVitalsHasNoStrip(t *testing.T) {
+	if out := html(t, model("h", nil, diskSections()...)); strings.Contains(out, "line-height:1.7") {
+		t.Fatal("empty strip rendered")
+	}
+}
+
+func TestHTMLEscapesAFactValue(t *testing.T) {
+	evil := `<script>alert("x")</script>`
+	out := html(t, model("h", nil, withFacts("Disk", check.Fact{Key: "disk_max", Value: "97% " + evil, Status: check.Caution})))
+	if strings.Contains(out, "<script>") || !strings.Contains(out, "&lt;script&gt;") {
+		t.Fatal("unescaped markup")
+	}
+}
+
+func TestJSONListsTheVitals(t *testing.T) {
+	b, err := JSON(model("h", nil, allVitals("/var")...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Vitals []check.Fact `json:"vitals"`
+	}
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Vitals) != 6 || got.Vitals[2] != (check.Fact{Key: "reboot_required", Value: "yes", Status: check.Caution}) {
+		t.Fatalf("%+v", got.Vitals)
+	}
+	if strings.Count(string(b), `"reboot_required"`) != 1 {
+		t.Fatal("facts are repeated inside the sections")
+	}
+}
+
+func TestFactsDoNotChangeTheOverallStatus(t *testing.T) {
+	s := withFacts("Disk", check.Fact{Key: "disk_max", Value: "97% /", Status: check.Unhealthy})
+	m := Build(check.Result{Sections: []*check.Section{s}, Overall: check.OK}, nil, "h", "1", when)
+	if m.Overall != check.OK || s.Status != check.OK || len(m.Vitals) != 1 {
+		t.Fatalf("overall %v, section %v, vitals %v", m.Overall, s.Status, m.Vitals)
+	}
+}
+
 // ── golden files ────────────────────────────────────────────────────────────
 
 func goldenModel() *Model {
 	sys := check.NewSection("system", "System Information")
 	sys.Add("Hostname", "web01.example.com", check.OK)
 	sys.Add("Kernel", "5.14.0-427.el9.x86_64", check.OK)
+	sys.Fact("uptime", "132 days", check.OK)
 	disk := check.NewSection("disk", "Disk Usage")
 	disk.Add("/", "41.0% used  (8 GB of 20 GB, 11 GB free)", check.OK, check.Meter(41))
 	disk.Add("/var", "91.0% used  (91 GB of 100 GB, 8 GB free)", check.Caution, check.Meter(91),
 		check.Delta("+3.0 pts since last run"))
 	disk.Alert(check.Caution, "Disk /var at 91%")
+	disk.Fact("disk_max", "91% /var", check.Caution)
+	updates := check.NewSection("updates", "Pending Updates")
+	updates.Add("Pending Updates", "14", check.Info)
+	updates.Add("Security Updates", "3", check.Info)
+	updates.Fact("updates", "14 (3 security)", check.Info)
 	ports := check.NewSection("ports", "Listening Ports")
 	ports.Separator("Listening Sockets")
 	ports.Add("", "tcp 0.0.0.0:22 users:((\"sshd\"))", check.Info)
@@ -518,7 +661,7 @@ func goldenModel() *Model {
 	return model("web01.example.com", &Triage{
 		NotifyAll: true, Summary: "1 new", New: []string{"Disk /var at 91%"},
 		Resolved: []string{"Service nginx.service failed"},
-	}, sys, disk, ports, docker)
+	}, sys, disk, updates, ports, docker)
 }
 
 func golden(t *testing.T, name, got string) {

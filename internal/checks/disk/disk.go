@@ -268,8 +268,12 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	// NFS, a FUSE mount owned by another user) cannot be read, and still
 	// prints every other filesystem.
 	rows, hidden := dedupe(parseDF(env.Runner.Run(ctx, "df", "-Pk").Stdout, globs))
-	for _, r := range rows {
+	fullest := -1
+	for i, r := range rows {
 		st := level(r.pct, cfg.Caution, cfg.Unhealthy)
+		if fullest < 0 || r.pct > rows[fullest].pct {
+			fullest = i
+		}
 		if st.Flagged() {
 			s.Alert(st, fmt.Sprintf("Disk %s at %.0f%%", r.path, r.pct))
 		}
@@ -277,6 +281,10 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 		s.Add(r.path,
 			fmt.Sprintf("%.1f%% used  (%s of %s, %s free)", r.pct, fmtBytes(r.used), fmtBytes(r.size), fmtBytes(r.avail)),
 			st, check.Meter(r.pct), check.Delta(deltaNote(prev, r.path, r.pct)))
+	}
+	if fullest >= 0 {
+		r := rows[fullest]
+		s.Fact("disk_max", fmt.Sprintf("%.0f%% %s", r.pct, r.path), level(r.pct, cfg.Caution, cfg.Unhealthy))
 	}
 	if hidden > 0 {
 		s.Add("Hidden Mounts", fmt.Sprintf("%d bind/container mount(s) on filesystems already listed", hidden),

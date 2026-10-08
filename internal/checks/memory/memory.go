@@ -92,6 +92,9 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 			s.Alert(check.Unhealthy, fmt.Sprintf("RAM at %.0f%%", pct))
 		}
 		current[label] = math.Round(pct*10) / 10
+		if label == "Mem" {
+			s.Fact("ram", fmt.Sprintf("%.0f%%", pct), st)
+		}
 		s.Add(label,
 			fmt.Sprintf("%.1f%% used  (%s of %s, %s free)", pct, fmtBytes(used), fmtBytes(total), fmtBytes(free)),
 			st, check.Meter(pct), check.Delta(deltaNote(prev, label, pct)))

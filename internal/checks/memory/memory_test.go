@@ -160,3 +160,12 @@ func TestValidate(t *testing.T) {
 		t.Fatal("caution above unhealthy accepted")
 	}
 }
+
+func TestTheRAMFactIsTheMemRowNotSwap(t *testing.T) {
+	e := checktest.NewEnv(t, Check{}, nil)
+	e.Fake.Expect("free -b", free(16*gib*85/100, 4*gib, 4*gib))
+	got := checktest.Facts(e.Run(Check{}))["ram"]
+	if got != (check.Fact{Key: "ram", Value: "85%", Status: check.Caution}) {
+		t.Fatalf("ram fact = %+v", got)
+	}
+}

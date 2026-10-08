@@ -153,7 +153,10 @@ func TestANewUnhealthyFindingAlertsEveryoneOnceAndIsCommitted(t *testing.T) {
 		Schema  int    `json:"schema"`
 		Host    string `json:"host"`
 		Overall string `json:"overall"`
-		Triage  struct {
+		Vitals  []struct {
+			Key, Value, Status string
+		} `json:"vitals"`
+		Triage struct {
 			NotifyAll bool     `json:"notify_all"`
 			New       []string `json:"new"`
 		} `json:"triage"`
@@ -163,6 +166,14 @@ func TestANewUnhealthyFindingAlertsEveryoneOnceAndIsCommitted(t *testing.T) {
 	}
 	if rep.Schema != 1 || rep.Host != "e2e.example.com" || rep.Overall != "unhealthy" || !rep.Triage.NotifyAll {
 		t.Fatalf("%+v", rep)
+	}
+	var vitals []string
+	for _, v := range rep.Vitals {
+		vitals = append(vitals, v.Key+"="+v.Value+"/"+v.Status)
+	}
+	// Only the enabled checks contribute; the fakes fix the values.
+	if got := strings.Join(vitals, " "); !strings.Contains(got, "disk_max=97% //unhealthy") || !strings.Contains(got, "ram=25%/ok") {
+		t.Fatalf("vitals: %s", got)
 	}
 	msgs := r.Messages()
 	if len(msgs) != 1 || len(msgs[0].To) != 2 {

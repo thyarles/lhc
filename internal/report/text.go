@@ -23,8 +23,9 @@ func Text(m *Model) string {
 		tw.FitHost("  Linux Health Check "+m.VersionLabel()+"  ·  {host}", m.Host, W),
 		"  " + m.Stamp(),
 		fmt.Sprintf("  Overall Status: %s  %s", ov.Sym, ov.Word),
-		strings.Repeat("=", W),
 	}
+	lines = append(lines, vitalsText(m.Vitals)...)
+	lines = append(lines, strings.Repeat("=", W))
 	lines = append(lines, triageText(m.Triage)...)
 	lines = append(lines, summaryText(m)...)
 	lines = append(lines, legendText())
@@ -44,6 +45,36 @@ func Text(m *Model) string {
 	}
 	lines = append(lines, "", strings.Repeat("=", W))
 	return strings.Join(lines, "\n") + "\n"
+}
+
+// vitalsText packs the strip into as few lines as fit, breaking only between
+// facts. A flagged fact carries its status glyph, so it stands out without
+// colour. One fact too long for a line on its own (a deep mount point) is
+// cut with "…".
+func vitalsText(facts []check.Fact) []string {
+	const indent, sep = "  ", " · "
+	var lines []string
+	cur := ""
+	for _, f := range facts {
+		item := VitalText(f)
+		if f.Status.Flagged() {
+			item = Pal(f.Status).Sym + " " + item
+		}
+		item = tw.Truncate(item, W-len(indent))
+		switch {
+		case cur == "":
+			cur = item
+		case tw.Len(indent+cur+sep+item) <= W:
+			cur += sep + item
+		default:
+			lines = append(lines, indent+cur)
+			cur = item
+		}
+	}
+	if cur != "" {
+		lines = append(lines, indent+cur)
+	}
+	return lines
 }
 
 func triageText(t *Triage) []string {

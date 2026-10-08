@@ -4,6 +4,23 @@
   "host": "web01.example.com",
   "generated_at": "2026-01-05T07:00:00Z",
   "overall": "caution",
+  "vitals": [
+    {
+      "key": "uptime",
+      "value": "132 days",
+      "status": "ok"
+    },
+    {
+      "key": "updates",
+      "value": "14 (3 security)",
+      "status": "info"
+    },
+    {
+      "key": "disk_max",
+      "value": "91% /var",
+      "status": "caution"
+    }
+  ],
   "triage": {
     "notify_all": true,
     "summary": "1 new",
@@ -42,6 +59,24 @@
         {
           "status": "caution",
           "msg": "Disk /var at 91%"
+        }
+      ]
+    },
+    {
+      "name": "updates",
+      "title": "Pending Updates",
+      "status": "info",
+      "applicable": true,
+      "rows": [
+        {
+          "label": "Pending Updates",
+          "value": "14",
+          "status": "info"
+        },
+        {
+          "label": "Security Updates",
+          "value": "3",
+          "status": "info"
         }
       ]
     },

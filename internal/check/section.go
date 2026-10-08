@@ -78,7 +78,19 @@ type Section struct {
 	Rows         []Row   `json:"rows"`
 	Alerts       []Alert `json:"alerts,omitempty"`
 	MissingTools []Tool  `json:"missing_tools,omitempty"`
-	Err          error   `json:"-"`
+	// Facts feed the vital signs strip. The report lists them once, at the
+	// top, so they are not repeated inside the section's JSON.
+	Facts []Fact `json:"-"`
+	Err   error  `json:"-"`
+}
+
+// Fact is one vital sign: a number people look for first on any host
+// (uptime, pending updates, the fullest disk). The key is the contract; the
+// report decides the label and the order.
+type Fact struct {
+	Key    string `json:"key"`
+	Value  string `json:"value"`
+	Status Status `json:"status"`
 }
 
 // NewSection starts an applicable, OK section.
@@ -125,6 +137,12 @@ func (s *Section) NotApplicable(reason string) {
 func (s *Section) Alert(st Status, msg string) {
 	s.Alerts = append(s.Alerts, Alert{Status: st, Msg: msg})
 	s.Status = Worse(s.Status, st)
+}
+
+// Fact records a vital sign. Unlike a row, it never changes the section's
+// status and never raises an alert: the row it summarises already did.
+func (s *Section) Fact(key, value string, st Status) {
+	s.Facts = append(s.Facts, Fact{Key: key, Value: value, Status: st})
 }
 
 // NeedTool records a missing command, for `lhc tools`.

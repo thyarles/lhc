@@ -128,3 +128,21 @@ func TestValidate(t *testing.T) {
 		t.Fatal("caution above unhealthy accepted")
 	}
 }
+
+func TestTheLoadFact(t *testing.T) {
+	for _, c := range []struct {
+		nproc, load, want string
+		st                check.Status
+	}{
+		{"8", "0.42 0.30 0.20 1/200 1234", "0.42 / 8 cores", check.OK},
+		{"1", "2.50 1.00 1.00 1/200 1234", "2.50 / 1 core", check.Unhealthy},
+	} {
+		e := checktest.NewEnv(t, Check{}, nil)
+		e.Fake.File("/proc/loadavg", c.load)
+		e.Fake.Expect("nproc", c.nproc)
+		got := checktest.Facts(e.Run(Check{}))["load"]
+		if got.Value != c.want || got.Status != c.st {
+			t.Errorf("load fact = %+v, want %q %v", got, c.want, c.st)
+		}
+	}
+}

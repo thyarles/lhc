@@ -100,3 +100,33 @@ func TestUptime(t *testing.T) {
 		}
 	}
 }
+
+func TestUptimeShort(t *testing.T) {
+	cases := map[time.Duration]string{
+		30 * time.Second:               "0 minutes",
+		61 * time.Minute:               "1 hour",
+		5*time.Hour + time.Hour:        "6 hours",
+		25 * time.Hour:                 "1 day",
+		132*24*time.Hour + 5*time.Hour: "132 days",
+	}
+	for d, want := range cases {
+		if got := UptimeShort(d); got != want {
+			t.Errorf("UptimeShort(%v) = %q, want %q", d, got, want)
+		}
+	}
+}
+
+func TestTheUptimeFact(t *testing.T) {
+	e := env(t, "1700000000")
+	e.Fake.File("/proc/uptime", "11404800.52 22000000.00\n")
+	s := e.Run(Check{})
+	if got := checktest.Facts(s)["uptime"]; got != (check.Fact{Key: "uptime", Value: "132 days", Status: check.OK}) {
+		t.Fatalf("uptime fact = %+v", got)
+	}
+}
+
+func TestNoUptimeNoFact(t *testing.T) {
+	if _, ok := checktest.Facts(env(t, "1700000000").Run(Check{}))["uptime"]; ok {
+		t.Fatal("a fact without /proc/uptime")
+	}
+}

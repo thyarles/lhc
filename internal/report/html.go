@@ -62,6 +62,7 @@ var htmlTmpl = template.Must(template.New("report").Funcs(template.FuncMap{
 	"groups":   func(t *Triage) []triageGroup { return t.groups() },
 	"statuses": func() []check.Status { return []check.Status{check.OK, check.Info, check.Caution, check.Unhealthy} },
 	"join":     strings.Join,
+	"vital":    VitalText,
 }).Parse(htmlSource))
 
 // HTML renders the e-mail body / standalone page.
