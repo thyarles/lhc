@@ -9,15 +9,17 @@ When asked to "solve issue #N", always follow these steps:
 1. **Read** this file, then the issue with its comments: `gh issue view N --comments`.
 2. **Ask before coding** if anything in the issue is ambiguous, contradicts this file, or has an open
    "Questions for the maintainer" section without an answer. Do not guess at product decisions.
-3. **Mark it in progress**: `gh issue edit N --add-label "status: in progress"`, then
-   create a branch from an up-to-date `main`: `git switch -c issue-N-short-slug`.
+3. **Move it to In progress** on the [project board](https://github.com/users/thyarles/projects/4):
+   `scripts/board.sh N "In progress"`. Then create a branch from an up-to-date
+   `main`: `git switch -c issue-N-short-slug`.
 4. **Implement** what the issue's design and acceptance criteria say, including the
    tests, the docs and `config.example.yaml`. If you have to deviate, say so in the PR.
 5. **Verify**: `make check` and `make e2e` green; for report changes, review the golden diff.
 6. **Open a pull request**: conventional-commit title, body starting with `Closes #N`,
    then what changed, how it was verified, and any deviation from the issue.
-7. **Mark it in review**: `gh issue edit N --remove-label "status: in progress" --add-label "status: in review"`.
+7. **Move it to In review**: `scripts/board.sh N "In review"`, and the same for the PR's own number.
 8. **Never merge.** The maintainer reviews and merges; merging to `main` cuts a release.
+   The board moves merged and closed items to Done by itself.
 
 ### Writing a new issue
 
@@ -25,7 +27,8 @@ Every issue must be detailed enough to be solved from the issue alone:
 **Context** (why), **Goal**, **Design** (config keys with defaults, files and
 functions involved, behaviour in edge cases), **Acceptance criteria** (checkboxes),
 **Tests**, **Docs**, **Out of scope**, and **Questions for the maintainer** when a
-product decision is open. Label it, and put it in a milestone when one fits.
+product decision is open. Label it, put it in a milestone when one fits, and
+add it to the board: `scripts/board.sh N Todo`.
 
 ## Non-negotiables
 
