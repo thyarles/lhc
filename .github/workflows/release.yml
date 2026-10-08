@@ -1,7 +1,8 @@
 name: release
 
-# Every merge to main cuts a release. The version comes from the commit
-# messages (conventional commits):
+# A merge to main cuts a release when it changed the binary or the installer
+# (see RELEASE_PATHS below). The version comes from the commit messages
+# (conventional commits):
 #   feat: ...        -> minor
 #   anything!: ...   -> major
 #   everything else  -> patch
@@ -20,6 +21,17 @@ concurrency:
   group: release
   cancel-in-progress: false
 
+env:
+  # A merge is released only if it changed something that ends up in the
+  # binary or the install (grep -E over the paths changed since the last tag):
+  #   cmd/, internal/     the code, plus the embedded HTML template and example config
+  #   *.go                any other Go file
+  #   go.mod, go.sum      dependency bumps, including Dependabot's
+  #   install.sh          shipped as a release asset and fetched by every install
+  #   .goreleaser.yaml    how the archives are built
+  # README, CLAUDE.md, .github/ and the like do not cut a release.
+  RELEASE_PATHS: '^(cmd/|internal/)|\.go$|^go\.(mod|sum)$|^install\.sh$|^\.goreleaser\.yaml$'
+
 jobs:
   check:
     uses: ./.github/workflows/check.yml
@@ -34,8 +46,29 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Anything to release?
+        id: changes
+        run: |
+          set -euo pipefail
+          last=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          if [ -z "$last" ]; then
+            echo "No previous release tag: releasing."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          relevant=$(git diff --name-only "$last"..HEAD | grep -E "$RELEASE_PATHS" || true)
+          if [ -n "$relevant" ]; then
+            echo "Changed since $last:"
+            echo "$relevant" | sed 's/^/  /'
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No release: only docs/CI changed since $last."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Version
         id: version
+        if: steps.changes.outputs.release == 'true'
         uses: paulhatch/semantic-version@9f72830310d5ed81233b641ee59253644cd8a8fc # v6.0.2
         with:
           tag_prefix: "v"
@@ -48,6 +81,7 @@ jobs:
 
       - name: Tag
         id: tag
+        if: steps.changes.outputs.release == 'true'
         env:
           TAG: ${{ steps.version.outputs.version_tag }}
         run: |
@@ -64,12 +98,12 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: steps.tag.outputs.skip == 'false'
+        if: steps.changes.outputs.release == 'true' && steps.tag.outputs.skip == 'false'
         with:
           go-version-file: go.mod
 
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
-        if: steps.tag.outputs.skip == 'false'
+        if: steps.changes.outputs.release == 'true' && steps.tag.outputs.skip == 'false'
         with:
           version: "~> v2"
           args: release --clean
