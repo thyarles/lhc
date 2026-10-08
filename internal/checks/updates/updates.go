@@ -62,7 +62,8 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 			unknown(s, res)
 			return s
 		}
-		total(s, cfg, countRPM(res.Stdout))
+		n := countRPM(res.Stdout)
+		fact(s, n, -1, total(s, cfg, n))
 
 	case "apt-get":
 		r.Run(ctx, "apt-get", "update", "-qq")
@@ -72,8 +73,7 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 			return s
 		}
 		all, sec := countApt(res.Stdout)
-		total(s, cfg, all)
-		security(s, cfg, sec)
+		fact(s, all, sec, check.Worse(total(s, cfg, all), security(s, cfg, sec)))
 
 	case "zypper":
 		res := r.Run(ctx, "zypper", "--non-interactive", "--quiet", "list-updates")
@@ -81,14 +81,18 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 			unknown(s, res)
 			return s
 		}
-		total(s, cfg, countZypperUpdates(res.Stdout))
+		n, sec := countZypperUpdates(res.Stdout), -1
+		st := total(s, cfg, n)
 		res = r.Run(ctx, "zypper", "--non-interactive", "--quiet", "list-patches", "--category", "security")
 		if !failed(res, 0) {
-			security(s, cfg, countZypperPatches(res.Stdout))
+			sec = countZypperPatches(res.Stdout)
+			st = check.Worse(st, security(s, cfg, sec))
 		}
+		fact(s, n, sec, st)
 
 	default:
 		s.Add("Package Manager", "Not detected", check.Info)
+		s.Fact("updates", "unknown", check.Info)
 	}
 	return s
 }
@@ -113,9 +117,20 @@ func unknown(s *check.Section, res runner.Result) {
 		why = "exit status " + strconv.Itoa(res.Code)
 	}
 	s.Add("Pending Updates", "Could not be determined", check.Info, check.Detail(why))
+	s.Fact("updates", "unknown", check.Info)
 }
 
-func total(s *check.Section, cfg *Config, n int) {
+// fact sets the "updates" vital sign: "14 (3 security)", or "14" when the
+// package manager cannot tell security updates apart (sec < 0).
+func fact(s *check.Section, n, sec int, st check.Status) {
+	v := strconv.Itoa(n)
+	if sec > 0 {
+		v += fmt.Sprintf(" (%d security)", sec)
+	}
+	s.Fact("updates", v, st)
+}
+
+func total(s *check.Section, cfg *Config, n int) check.Status {
 	st := check.OK
 	switch {
 	case cfg.Caution > 0 && n >= cfg.Caution:
@@ -125,11 +140,12 @@ func total(s *check.Section, cfg *Config, n int) {
 		st = check.Info
 	}
 	s.Add("Pending Updates", strconv.Itoa(n), st)
+	return st
 }
 
-func security(s *check.Section, cfg *Config, n int) {
+func security(s *check.Section, cfg *Config, n int) check.Status {
 	if n == 0 {
-		return
+		return check.OK
 	}
 	st := check.Info
 	if cfg.SecurityCaution > 0 && n >= cfg.SecurityCaution {
@@ -139,6 +155,7 @@ func security(s *check.Section, cfg *Config, n int) {
 	if st == check.Caution {
 		s.Alert(check.Caution, fmt.Sprintf("%d pending security updates", n))
 	}
+	return st
 }
 
 // countRPM counts the package lines of `dnf/yum check-update -q`, skipping

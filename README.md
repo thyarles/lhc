@@ -47,6 +47,17 @@ Every check is built to stay quiet when nothing changed. A missing subsystem
 (no Docker, no systemd, no Kubernetes) becomes a single "not present on this
 host" line, never a warning.
 
+Every report opens with the same **vital signs** strip, in the same order on
+every host, so the numbers people look for first are always in one place:
+
+```
+Up 132 days · Updates 14 (3 security) · Disk 71% /var · RAM 45% · Load 0.42 / 8 cores
+```
+
+A value is coloured (and marked `!` or `✕`) only when its check flagged it. A
+disabled check just drops its entry. In the JSON report the strip is the
+top-level `vitals` list of `{key, value, status}`.
+
 ## Install
 
 As root, on Debian/Ubuntu, RHEL/Rocky/Alma/CentOS (7 and later) or SUSE/openSUSE

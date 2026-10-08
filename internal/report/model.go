@@ -32,14 +32,16 @@ type Model struct {
 	// kept. A reader should not scroll past nine green panels to reach the
 	// one that needs them.
 	Sections []*check.Section
-	Triage   *Triage // nil when there was no alert evaluation
+	// Vitals is the strip under the host name, in vitalOrder.
+	Vitals []check.Fact
+	Triage *Triage // nil when there was no alert evaluation
 }
 
 // Build assembles the model. d may be nil.
 func Build(res check.Result, d *alerts.Decision, host, version string, now time.Time) *Model {
 	m := &Model{
 		Host: host, Version: version, Generated: now, Overall: res.Overall,
-		Sections: Order(res.Sections),
+		Sections: Order(res.Sections), Vitals: Vitals(res.Sections),
 	}
 	if d != nil {
 		m.Triage = &Triage{
@@ -53,6 +55,50 @@ func Build(res check.Result, d *alerts.Decision, host, version string, now time.
 		}
 	}
 	return m
+}
+
+// vitalOrder is the fixed order of the strip and the label each fact key
+// shows as. A key that is not listed here is not shown.
+var vitalOrder = []struct{ key, label string }{
+	{"uptime", "Up"},
+	{"updates", "Updates"},
+	{"reboot_required", "Reboot required"},
+	{"disk_max", "Disk"},
+	{"ram", "RAM"},
+	{"load", "Load"},
+}
+
+// Vitals collects the facts in the strip's order, whatever order the
+// sections come in. A disabled check simply leaves its fact out.
+func Vitals(secs []*check.Section) []check.Fact {
+	out := []check.Fact{}
+	for _, v := range vitalOrder {
+	find:
+		for _, s := range secs {
+			for _, f := range s.Facts {
+				if f.Key == v.key {
+					out = append(out, f)
+					break find
+				}
+			}
+		}
+	}
+	return out
+}
+
+// VitalText is how a fact reads in the strip: "Up 132 days", "Disk 71% /var".
+// A yes/no fact ("reboot_required": "yes") is just its label.
+func VitalText(f check.Fact) string {
+	for _, v := range vitalOrder {
+		if v.key != f.Key {
+			continue
+		}
+		if f.Value == "yes" {
+			return v.label
+		}
+		return v.label + " " + f.Value
+	}
+	return f.Key + " " + f.Value
 }
 
 func msgs(as []check.Alert) []string {

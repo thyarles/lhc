@@ -56,7 +56,9 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	if b, err := r.ReadFile("/proc/uptime"); err == nil {
 		if f := strings.Fields(string(b)); len(f) > 0 {
 			if secs, err := strconv.ParseFloat(f[0], 64); err == nil {
-				s.Add("Uptime", Uptime(time.Duration(secs)*time.Second), check.OK)
+				up := time.Duration(secs) * time.Second
+				s.Add("Uptime", Uptime(up), check.OK)
+				s.Fact("uptime", UptimeShort(up), check.OK)
 			}
 		}
 	}
@@ -146,4 +148,20 @@ func Uptime(d time.Duration) string {
 		return "up 0 minutes"
 	}
 	return "up " + strings.Join(out, ", ")
+}
+
+// UptimeShort is the uptime in its largest whole unit, for the vital signs
+// strip: "132 days", "5 hours" under a day, "12 minutes" under an hour.
+func UptimeShort(d time.Duration) string {
+	n, unit := int(d/time.Minute), "minute"
+	switch {
+	case d >= 24*time.Hour:
+		n, unit = int(d/(24*time.Hour)), "day"
+	case d >= time.Hour:
+		n, unit = int(d/time.Hour), "hour"
+	}
+	if n != 1 {
+		unit += "s"
+	}
+	return fmt.Sprintf("%d %s", n, unit)
 }

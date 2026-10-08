@@ -310,6 +310,15 @@ func Rows(s *check.Section) map[string]check.Row {
 	return out
 }
 
+// Facts indexes a section's vital-sign facts by key.
+func Facts(s *check.Section) map[string]check.Fact {
+	out := map[string]check.Fact{}
+	for _, f := range s.Facts {
+		out[f.Key] = f
+	}
+	return out
+}
+
 // Labels lists the row labels in order.
 func Labels(s *check.Section) []string {
 	out := make([]string, 0, len(s.Rows))

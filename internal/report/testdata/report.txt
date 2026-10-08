@@ -2,6 +2,7 @@
   Linux Health Check v1.2.3  ·  web01.example.com
   2026-01-05 07:00 UTC
   Overall Status: !  CAUTION
+  Up 132 days · Updates 14 (3 security) · ! Disk 91% /var
 ==============================================================================
 
   NEW FINDINGS — PLEASE READ
@@ -17,6 +18,7 @@
   AT A GLANCE
   ──────────────────────────────────────────────────────────────────────────
   !  Disk Usage                     CAUTION  (1 to review)
+  ·  Pending Updates                INFO
   ·  Listening Ports                INFO
   ✓  System Information             OK
   Not present on this host: Docker Containers
@@ -29,6 +31,11 @@
   !  /var                           [#########.] 91.0% used (91 GB of 100 GB,
                                     8 GB free)
                                     +3.0 pts since last run
+
+  ·  Pending Updates  [INFO]
+  ──────────────────────────────────────────────────────────────────────────
+  ·  Pending Updates                14
+  ·  Security Updates               3
 
   ·  Listening Ports  [INFO]
   ──────────────────────────────────────────────────────────────────────────

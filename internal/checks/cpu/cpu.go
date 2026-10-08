@@ -68,6 +68,11 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 			}
 			s.Add("Load Average (1/5/15 min)", fmt.Sprintf("%.2f / %.2f / %.2f", l[0], l[1], l[2]), st,
 				check.Detail(fmt.Sprintf("Thresholds: caution ≥ %.1f, unhealthy ≥ %.1f", tc, tu)))
+			cores := "cores"
+			if ncpus == 1 {
+				cores = "core"
+			}
+			s.Fact("load", fmt.Sprintf("%.2f / %d %s", l[0], ncpus, cores), st)
 		} else {
 			s.Add("Load Average", strings.TrimSpace(string(b)), check.Info)
 		}

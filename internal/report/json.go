@@ -16,6 +16,7 @@ type jsonReport struct {
 	Host        string           `json:"host"`
 	GeneratedAt time.Time        `json:"generated_at"`
 	Overall     check.Status     `json:"overall"`
+	Vitals      []check.Fact     `json:"vitals"`
 	Triage      *Triage          `json:"triage"`
 	Sections    []*check.Section `json:"sections"`
 }
@@ -27,6 +28,10 @@ func JSON(m *Model) ([]byte, error) {
 		secs = []*check.Section{}
 	}
 	// Lists are always arrays, never null, so consumers need no nil checks.
+	vitals := m.Vitals
+	if vitals == nil {
+		vitals = []check.Fact{}
+	}
 	var tr *Triage
 	if m.Triage != nil {
 		c := *m.Triage
@@ -39,7 +44,7 @@ func JSON(m *Model) ([]byte, error) {
 	}
 	b, err := json.MarshalIndent(jsonReport{
 		Schema: SchemaVersion, Version: m.Version, Host: m.Host,
-		GeneratedAt: m.Generated, Overall: m.Overall, Triage: tr, Sections: secs,
+		GeneratedAt: m.Generated, Overall: m.Overall, Vitals: vitals, Triage: tr, Sections: secs,
 	}, "", "  ")
 	if err != nil {
 		return nil, err
