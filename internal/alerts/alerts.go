@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/check"
-	"github.com/thyarles/lhc-go/internal/state"
+	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/state"
 )
 
 // StateKey is where the notified conditions live in the "alerts" store.

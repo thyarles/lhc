@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thyarles/lhc-go/internal/check"
-	"github.com/thyarles/lhc-go/internal/checktest"
-	"github.com/thyarles/lhc-go/internal/runner"
-	"github.com/thyarles/lhc-go/internal/state"
+	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/checktest"
+	"github.com/thyarles/lhc/internal/runner"
+	"github.com/thyarles/lhc/internal/state"
 )
 
 const (

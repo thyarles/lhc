@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thyarles/lhc-go/internal/check"
-	"github.com/thyarles/lhc-go/internal/checktest"
+	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/checktest"
 )
 
 func newEnv(t *testing.T, pm string, cfg *Config) *checktest.Env {

@@ -7,8 +7,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/alerts"
-	"github.com/thyarles/lhc-go/internal/check"
+	"github.com/thyarles/lhc/internal/alerts"
+	"github.com/thyarles/lhc/internal/check"
 )
 
 // Triage is the "why am I reading this" part: what is new, what is known.

@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thyarles/lhc-go/internal/check"
-	"github.com/thyarles/lhc-go/internal/checks/tools"
-	"github.com/thyarles/lhc-go/internal/host"
-	"github.com/thyarles/lhc-go/internal/runner"
+	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/checks/tools"
+	"github.com/thyarles/lhc/internal/host"
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 func newToolsCmd(a *app) *cobra.Command {

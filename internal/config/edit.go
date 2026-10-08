@@ -12,7 +12,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/thyarles/lhc-go/internal/state"
+	"github.com/thyarles/lhc/internal/state"
 )
 
 // Assignment is one KEY=VALUE from `lhc config set`.

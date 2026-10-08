@@ -1,6 +1,6 @@
 package check
 
-import "github.com/thyarles/lhc-go/internal/host"
+import "github.com/thyarles/lhc/internal/host"
 
 // Row is one line of a section.
 type Row struct {

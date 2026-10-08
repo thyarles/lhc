@@ -3,7 +3,7 @@ package kubernetes
 import (
 	"os"
 
-	"github.com/thyarles/lhc-go/internal/runner"
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 // Getenv reads $KUBECONFIG and $HOME. A variable so tests can replace the

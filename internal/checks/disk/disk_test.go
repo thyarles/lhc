@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thyarles/lhc-go/internal/check"
-	"github.com/thyarles/lhc-go/internal/checktest"
+	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/checktest"
 )
 
 const header = "Filesystem     1024-blocks      Used Available Capacity Mounted on"

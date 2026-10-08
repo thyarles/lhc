@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/check"
-	tw "github.com/thyarles/lhc-go/internal/textwrap"
+	"github.com/thyarles/lhc/internal/check"
+	tw "github.com/thyarles/lhc/internal/textwrap"
 )
 
 // These pin the properties that make the report readable — worst-first

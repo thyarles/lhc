@@ -53,7 +53,7 @@ As root, on Debian/Ubuntu, RHEL/Rocky/Alma/CentOS (7 and later) or SUSE/openSUSE
 Leap, amd64 or arm64:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/thyarles/lhc-go/main/install.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/thyarles/lhc/main/install.sh | bash -s -- \
     --set smtp.host=relay.example.com \
     --set email.daily_recipients=ops@example.com \
     --set email.alert_recipients=team@example.com
@@ -67,7 +67,7 @@ and reports. `--help` lists the options (`--time 06:30`, `--every 6h`,
 `--no-schedule`, a specific version, ...).
 
 Without root, or to try it first: download `lhc_linux_amd64.tar.gz` from the
-[releases](https://github.com/thyarles/lhc-go/releases), unpack it and run
+[releases](https://github.com/thyarles/lhc/releases), unpack it and run
 `./lhc report`. Nothing is installed or changed.
 
 ## Use

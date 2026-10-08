@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/runner"
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 // MaxLines caps the matches Today returns per source. The log scan streams

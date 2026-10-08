@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/thyarles/lhc-go/internal/check"
+	"github.com/thyarles/lhc/internal/check"
 )
 
 // kubectl's AGE column, produced by apimachinery's HumanDuration: 45s, 5m30s,

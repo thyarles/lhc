@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/checktest"
-	"github.com/thyarles/lhc-go/internal/config"
+	"github.com/thyarles/lhc/internal/checktest"
+	"github.com/thyarles/lhc/internal/config"
 )
 
 // The bug this answers: every host installed the same time, so they all began

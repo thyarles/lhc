@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thyarles/lhc-go/internal/version"
+	"github.com/thyarles/lhc/internal/version"
 
 	// Every check registers itself.
-	_ "github.com/thyarles/lhc-go/internal/checks/all"
+	_ "github.com/thyarles/lhc/internal/checks/all"
 )
 
 // exitError carries a specific exit status out of a command.

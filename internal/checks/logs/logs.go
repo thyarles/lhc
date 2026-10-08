@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/thyarles/lhc-go/internal/check"
-	"github.com/thyarles/lhc-go/internal/checks/logscan"
+	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/checks/logscan"
 )
 
 func init() { check.Register(Check{}) }

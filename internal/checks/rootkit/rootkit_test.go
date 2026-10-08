@@ -7,8 +7,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/thyarles/lhc-go/internal/check"
-	"github.com/thyarles/lhc-go/internal/checktest"
+	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/checktest"
 )
 
 // procReads makes successive ReadDir("/proc") calls return successive

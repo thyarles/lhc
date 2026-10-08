@@ -6,7 +6,7 @@
 
 `/home/charles/git/lhc-go` is currently a byte-identical copy of `thyarles/linux-health-check` v2.2.0 (Python, stdlib-only, ~3,800 runtime lines, 21 checks, INI config, JSON state, SMTP mail, cron). It is not a git repo. Go is not installed on this machine. The Python copy will be deleted and the Go project started from scratch; the Python reference stays at `../linux-health-check`.
 
-Goal: a new project **`lhc-go`** shipping one static binary `lhc` for Debian/Ubuntu and the RHEL family, with the same product behaviour (two-audience alerting, dedup state machine, noise-filtered checks, HTML+text reports) but: checks as modules, notifiers behind an interface, a built-in scheduler for more than one run a day, and CI/CD where merging to `main` cuts a release.
+Goal: a new project **`lhc`** shipping one static binary `lhc` for Debian/Ubuntu and the RHEL family, with the same product behaviour (two-audience alerting, dedup state machine, noise-filtered checks, HTML+text reports) but: checks as modules, notifiers behind an interface, a built-in scheduler for more than one run a day, and CI/CD where merging to `main` cuts a release.
 
 ### Target systems
 
@@ -32,7 +32,7 @@ Nothing in Go does "one binary, daily snapshot + change detection + two-audience
 
 ### Decisions locked with the user
 
-1. New repo `lhc-go`, module `github.com/thyarles/lhc-go`, binary `lhc`. Python project stays for legacy hosts.
+1. New repo `thyarles/lhc` (public; planned as `lhc-go`, renamed on 2026-10-08 because the language suffix means nothing to users), module `github.com/thyarles/lhc`, binary `lhc`. Python project stays for legacy hosts.
 2. Clean break: YAML config, new state layout, no importer.
 3. Scheduling: `lhc install` → systemd timer when usable, else crontab; `lhc serve` built-in daemon. One run path.
 4. Dependencies: standard library + `spf13/cobra` + `go.yaml.in/yaml/v3` + `golang.org/x/*`, enforced in CI. Kubernetes is read by running `kubectl`, not by linking the Kubernetes client library (see glossary: client-go). `CGO_ENABLED=0`, linux/amd64 + arm64.
@@ -69,9 +69,9 @@ Nothing in Go does "one binary, daily snapshot + change detection + two-audience
 ## Repository layout
 
 ```
-lhc-go/
+lhc/
   PLAN.md                       this plan
-  go.mod                        module github.com/thyarles/lhc-go ; go 1.27
+  go.mod                        module github.com/thyarles/lhc ; go 1.27
   cmd/lhc/main.go               cobra root; os.Exit only here
   internal/cli/                 one file per subcommand: run, report, install, uninstall, serve, config, tools, paths, version
   internal/version/             Version/Commit/Date set via -ldflags
@@ -195,16 +195,16 @@ Purpose and non-negotiables (single static binary, allowlisted deps, checks neve
 
 ## install.sh
 
-`curl -fsSL https://raw.githubusercontent.com/thyarles/lhc-go/main/install.sh | bash -s -- [vX.Y.Z] [--set k=v ...] [--time HH:MM] [--every 6h] [--no-schedule]`: root check; curl→wget fallback (keep the TLS-1.0 rationale); arch map; fetch `lhc_linux_<arch>.tar.gz` + `checksums.txt` from `latest/download` or the tag; verify sha256 (grep fallback for RHEL 7 coreutils without `--ignore-missing`); `install -m 0755` to `/usr/local/bin/lhc`; `lhc version` must run; `config init` if absent; apply `--set`; `lhc install`; print a hint about removing the old Python cron entry (marker `linux-healthcheck-managed`), do not act.
+`curl -fsSL https://raw.githubusercontent.com/thyarles/lhc/main/install.sh | bash -s -- [vX.Y.Z] [--set k=v ...] [--time HH:MM] [--every 6h] [--no-schedule]`: root check; curl→wget fallback (keep the TLS-1.0 rationale); arch map; fetch `lhc_linux_<arch>.tar.gz` + `checksums.txt` from `latest/download` or the tag; verify sha256 (grep fallback for RHEL 7 coreutils without `--ignore-missing`); `install -m 0755` to `/usr/local/bin/lhc`; `lhc version` must run; `config init` if absent; apply `--set`; `lhc install`; print a hint about removing the old Python cron entry (marker `linux-healthcheck-managed`), do not act.
 
 ## Milestones (each independently releasable)
 
-0. **Clean slate + environment** — delete everything in `lhc-go` except `LICENSE`; write `PLAN.md` (this plan); `git init` with a Go `.gitignore`; install Go 1.27.1 under `$HOME` (tarball to `~/go-sdk`, `~/go/bin` on PATH, no sudo), `golangci-lint`, `govulncheck`, `goreleaser` (for local snapshot builds).
+0. **Clean slate + environment** — delete everything in the working copy except `LICENSE`; write `PLAN.md` (this plan); `git init` with a Go `.gitignore`; install Go 1.27.1 under `$HOME` (tarball to `~/go-sdk`, `~/go/bin` on PATH, no sudo), `golangci-lint`, `govulncheck`, `goreleaser` (for local snapshot builds).
 1. **v0.1 skeleton** — go.mod, cobra root, version, paths, config, runner, state, check model/registry/RunAll, report text/html/json + goldens, checks `system` + `cpu`, CI + release + GoReleaser + allowlist + Dependabot, CLAUDE.md, README stub. Done when `lhc report` works locally and the released static binary runs on a RHEL 7 VM.
 2. **v0.2 daily-mail parity on a plain VM** — `memory disk processes services tools` (+ `lhc tools [--install]` replacing bootstrap), alerts engine, notify + SMTP, `lhc run` (save report, `reports.keep`, commit-after-send), `--scheduled` jitter, `install/uninstall`, `serve`, install.sh, e2e test. Done when one VM runs `lhc` instead of Python for a week with identical alerts.
 3. **v0.3 security/inventory** — `users auth fail2ban ports crontabs suid packages etc logs rootkit network updates docker`, all 72 noise regressions ported; zypper branch in `host.PkgManager`, `InstallCmd`, the `updates` check and the `packages` inventory (`rpm -qa` works on SUSE too). Done when Debian, RHEL-family and openSUSE hosts (or containers in CI) run it.
 4. **v0.4 kubernetes** — one package, discovery over fixed candidate paths via `LookPath`/`Readable`, 40 tests ported. Done when an rke2 node runs both for a week with the same alerts.
-5. **v1.0 cutover** — docs, README, Python repo points to lhc-go.
+5. **v1.0 cutover** — docs, README, Python repo points to lhc.
 
 Implementation order is 0 then 1. Neither starts in this session (see the scope note at the top).
 

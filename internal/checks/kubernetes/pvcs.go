@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/thyarles/lhc-go/internal/check"
+	"github.com/thyarles/lhc/internal/check"
 )
 
 // custom-columns, never the table: kubectl 1.31 inserted

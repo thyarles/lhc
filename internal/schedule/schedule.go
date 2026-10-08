@@ -17,7 +17,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/config"
+	"github.com/thyarles/lhc/internal/config"
 )
 
 // DefaultWindow is used when random_window cannot be read.

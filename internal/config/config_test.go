@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/thyarles/lhc-go/internal/checks/all"
-	"github.com/thyarles/lhc-go/internal/config"
+	_ "github.com/thyarles/lhc/internal/checks/all"
+	"github.com/thyarles/lhc/internal/config"
 )
 
 func TestTheExampleIsExactlyTheDefaults(t *testing.T) {

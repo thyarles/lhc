@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/runner"
-	"github.com/thyarles/lhc-go/internal/state"
+	"github.com/thyarles/lhc/internal/runner"
+	"github.com/thyarles/lhc/internal/state"
 )
 
 // Meta describes a check.

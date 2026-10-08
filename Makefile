@@ -4,7 +4,7 @@
 .PHONY: help build test lint vuln deps check e2e report snapshot clean
 
 BIN     := lhc
-LDFLAGS := -s -w -X github.com/thyarles/lhc-go/internal/version.Version=$(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo dev)
+LDFLAGS := -s -w -X github.com/thyarles/lhc/internal/version.Version=$(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo dev)
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \

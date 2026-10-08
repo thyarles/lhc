@@ -15,14 +15,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thyarles/lhc-go/internal/alerts"
-	"github.com/thyarles/lhc-go/internal/check"
-	"github.com/thyarles/lhc-go/internal/notify"
-	"github.com/thyarles/lhc-go/internal/notify/smtp"
-	"github.com/thyarles/lhc-go/internal/report"
-	"github.com/thyarles/lhc-go/internal/schedule"
-	"github.com/thyarles/lhc-go/internal/state"
-	"github.com/thyarles/lhc-go/internal/version"
+	"github.com/thyarles/lhc/internal/alerts"
+	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/notify"
+	"github.com/thyarles/lhc/internal/notify/smtp"
+	"github.com/thyarles/lhc/internal/report"
+	"github.com/thyarles/lhc/internal/schedule"
+	"github.com/thyarles/lhc/internal/state"
+	"github.com/thyarles/lhc/internal/version"
 )
 
 // runOpts selects what one pass does.

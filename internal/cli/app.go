@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/check"
-	"github.com/thyarles/lhc-go/internal/config"
-	"github.com/thyarles/lhc-go/internal/host"
-	"github.com/thyarles/lhc-go/internal/paths"
-	"github.com/thyarles/lhc-go/internal/runner"
+	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/config"
+	"github.com/thyarles/lhc/internal/host"
+	"github.com/thyarles/lhc/internal/paths"
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 // app is the state shared by the subcommands, filled lazily.

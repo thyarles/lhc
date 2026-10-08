@@ -10,7 +10,7 @@ import (
 
 // Set by GoReleaser:
 //
-//	-X github.com/thyarles/lhc-go/internal/version.Version=1.2.3
+//	-X github.com/thyarles/lhc/internal/version.Version=1.2.3
 var (
 	Version = "dev"
 	Commit  = ""

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thyarles/lhc-go/internal/check"
-	"github.com/thyarles/lhc-go/internal/checks/system"
+	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/checks/system"
 )
 
 func init() { check.Register(Check{}) }
