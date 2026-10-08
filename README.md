@@ -174,7 +174,7 @@ make report   # build and preview a report on this machine
 Every merge to `main` cuts a release: conventional commits decide the
 version (`feat:` → minor, `fix:` and others → patch, `!` → major), and
 GoReleaser publishes the archives and `checksums.txt`. See
-[AGENTS.md](AGENTS.md) for the codebase conventions, including how to add a
+[CLAUDE.md](CLAUDE.md) for the codebase conventions, including how to add a
 check.
 
 This project was developed with the help of AI tools.

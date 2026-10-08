@@ -2,6 +2,34 @@
 
 Conventions for anyone (human or tool) changing this repository.
 
+## Working on an issue
+
+When asked to "solve issue #N", always follow these steps:
+
+1. **Read** this file, then the issue with its comments: `gh issue view N --comments`.
+2. **Ask before coding** if anything in the issue is ambiguous, contradicts this file, or has an open
+   "Questions for the maintainer" section without an answer. Do not guess at product decisions.
+3. **Move it to In progress** on the [project board](https://github.com/users/thyarles/projects/4):
+   `scripts/board.sh N "In progress"`. Then create a branch from an up-to-date
+   `main`: `git switch -c issue-N-short-slug`.
+4. **Implement** what the issue's design and acceptance criteria say, including the
+   tests, the docs and `config.example.yaml`. If you have to deviate, say so in the PR.
+5. **Verify**: `make check` and `make e2e` green; for report changes, review the golden diff.
+6. **Open a pull request**: conventional-commit title, body starting with `Closes #N`,
+   then what changed, how it was verified, and any deviation from the issue.
+7. **Move it to In review**: `scripts/board.sh N "In review"`, and the same for the PR's own number.
+8. **Never merge.** The maintainer reviews and merges; merging to `main` cuts a release.
+   The board moves merged and closed items to Done by itself.
+
+### Writing a new issue
+
+Every issue must be detailed enough to be solved from the issue alone:
+**Context** (why), **Goal**, **Design** (config keys with defaults, files and
+functions involved, behaviour in edge cases), **Acceptance criteria** (checkboxes),
+**Tests**, **Docs**, **Out of scope**, and **Questions for the maintainer** when a
+product decision is open. Label it, put it in a milestone when one fits, and
+add it to the board: `scripts/board.sh N Todo`.
+
 ## Non-negotiables
 
 - **One static binary.** `CGO_ENABLED=0`, linux/amd64 and linux/arm64. It runs
@@ -96,4 +124,7 @@ Conventional commits: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`,
 GoReleaser). Nothing is committed back to `main`: the version is injected
 with `-ldflags`.
 
-Commit messages carry no AI attribution trailers.
+No AI attribution anywhere: no `Co-Authored-By` trailer, no "Generated with ..."
+line, no mention of an AI writing or publishing anything in commits, pull
+requests, issues, comments or release notes. Everything is authored by the
+maintainer.
