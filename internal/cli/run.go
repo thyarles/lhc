@@ -18,7 +18,6 @@ import (
 	"github.com/thyarles/lhc/internal/alerts"
 	"github.com/thyarles/lhc/internal/check"
 	"github.com/thyarles/lhc/internal/notify"
-	"github.com/thyarles/lhc/internal/notify/smtp"
 	"github.com/thyarles/lhc/internal/report"
 	"github.com/thyarles/lhc/internal/schedule"
 	"github.com/thyarles/lhc/internal/state"
@@ -203,10 +202,7 @@ func (a *app) pass(ctx context.Context, o runOpts) error {
 		// Nothing was lost: there was nobody to tell. Commit normally.
 		return decision.Commit()
 	}
-	sender := &smtp.Sender{Config: smtp.Config{
-		Host: a.cfg.SMTP.Host, Port: a.cfg.SMTP.Port, TLS: a.cfg.SMTP.TLS, TLSSkipVerify: a.cfg.SMTP.TLSSkipVerify,
-		Username: a.cfg.SMTP.Username, Password: a.cfg.SMTP.Password, HelloName: h.Label,
-	}, Now: a.now}
+	sender := a.sender(h)
 	msg := notify.Message{
 		From: a.fromAddress(h), To: to, Subject: subject, Text: text, HTML: html, HTMLMode: a.cfg.Email.HTMLMode,
 	}
