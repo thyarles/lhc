@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 func imageRows(ctx context.Context, s *check.Section, env *check.Env, cfg *Config) {
@@ -19,7 +20,7 @@ func imageRows(ctx context.Context, s *check.Section, env *check.Env, cfg *Confi
 	}
 	args = append(args, "images")
 
-	ctx, cancel := context.WithTimeout(ctx, crictlTimeout)
+	ctx, cancel := runner.WithTimeout(ctx, crictlTimeout)
 	defer cancel()
 	res := env.Runner.Run(ctx, crictl, args...)
 	if !res.OK() || res.Stdout == "" {

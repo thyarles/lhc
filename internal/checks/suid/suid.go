@@ -35,7 +35,7 @@ const (
 func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	s := check.NewSection("suid", c.Meta().Title)
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := runner.WithTimeout(ctx, timeout)
 	defer cancel()
 	// -perm -4000 rather than /4000: older findutils (RHEL 6 era) do not
 	// know the slash form, and for a single bit the two mean the same.

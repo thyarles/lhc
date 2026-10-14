@@ -128,7 +128,7 @@ type kube struct {
 }
 
 func (k kube) run(ctx context.Context, args ...string) runner.Result {
-	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	ctx, cancel := runner.WithTimeout(ctx, callTimeout)
 	defer cancel()
 	return k.r.Run(ctx, k.bin, append(slices.Clone(k.base), args...)...)
 }

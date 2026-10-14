@@ -17,8 +17,31 @@ import (
 	"time"
 )
 
-// DefaultTimeout applies to a command whose context carries no deadline.
+// DefaultTimeout bounds every command not run under WithTimeout.
 const DefaultTimeout = 30 * time.Second
+
+// KillGrace is how long a timed-out command has to exit after SIGINT before
+// its process group gets SIGKILL.
+const KillGrace = 5 * time.Second
+
+type budgetKey struct{}
+
+// WithTimeout bounds a group of commands to d, and lets each command under
+// it run up to d instead of DefaultTimeout. A check uses it for the commands
+// that are slow by nature (yum reaching its mirrors, find over /). A plain
+// context.WithTimeout does not raise the per-command limit: the check's own
+// 10-minute deadline is there too, and must not become every command's.
+func WithTimeout(ctx context.Context, d time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithValue(ctx, budgetKey{}, d), d)
+}
+
+// budget is the limit for one command started under ctx.
+func budget(ctx context.Context) time.Duration {
+	if d, ok := ctx.Value(budgetKey{}).(time.Duration); ok && d > 0 {
+		return d
+	}
+	return DefaultTimeout
+}
 
 // Result of one command. Code is -1 when the command could not be started or
 // was killed by its timeout; Err says why.
@@ -130,11 +153,9 @@ func (s *System) Shell(ctx context.Context, script string) Result {
 }
 
 func (s *System) exec(ctx context.Context, bin string, args ...string) Result {
-	if _, ok := ctx.Deadline(); !ok {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, DefaultTimeout)
-		defer cancel()
-	}
+	// The earlier of the parent's deadline and this command's budget.
+	ctx, cancel := context.WithTimeout(ctx, budget(ctx))
+	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Env = s.env
 	cmd.Stdin = nil
@@ -143,17 +164,32 @@ func (s *System) exec(ctx context.Context, bin string, args ...string) Result {
 	// CommandContext kills only the direct child. A pipeline under sh -c
 	// would leave kubectl or find running after the timeout, still holding
 	// the output pipes open, so put the child in its own process group and
-	// kill the whole group.
+	// signal the whole group.
+	//
+	// SIGINT first, as Ctrl+C would: yum, dnf and apt release their locks on
+	// it. A straight SIGKILL left yum's Berkeley DB read locks behind, and the
+	// next yum printed "BDB2053 Freeing read locks". Whatever is still
+	// running KillGrace later gets SIGKILL.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	var hardKill *time.Timer
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {
 			return nil
 		}
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		pgid := -cmd.Process.Pid
+		hardKill = time.AfterFunc(KillGrace, func() { _ = syscall.Kill(pgid, syscall.SIGKILL) })
+		return syscall.Kill(pgid, syscall.SIGINT)
 	}
-	cmd.WaitDelay = 2 * time.Second
+	cmd.WaitDelay = KillGrace + 2*time.Second
 
 	err := cmd.Run()
+	// Run has returned: the child has exited and the pipes are closed. Stop
+	// the timer so it never signals a process group ID the kernel may have
+	// handed out again. Run waits for Cancel to return, so reading hardKill
+	// here does not race.
+	if hardKill != nil {
+		hardKill.Stop()
+	}
 	res := Result{
 		Stdout: strings.TrimSpace(stdout.String()),
 		Stderr: strings.TrimSpace(stderr.String()),

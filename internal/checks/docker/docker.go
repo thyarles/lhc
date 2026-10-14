@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 func init() { check.Register(Check{}) }
@@ -89,7 +90,7 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 		return s
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := runner.WithTimeout(ctx, timeout)
 	defer cancel()
 	res := r.Run(ctx, "docker", "ps", "-a", "--format", "{{.Names}}\t{{.Status}}\t{{.Image}}")
 	if res.Code != 0 || res.Err != nil {
