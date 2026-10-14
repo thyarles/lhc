@@ -57,17 +57,46 @@ func TestRootLoginRowsAndWtmpFooter(t *testing.T) {
 	e := checktest.NewEnv(t, Check{}, nil)
 	e.Fake.Expect("last -n 5 root", "root     pts/8        Mon Jan  5 06:00   still logged in\n\nwtmp begins Thu Jan  1 00:00:00 2026")
 	s := e.Run(Check{})
-	var root []check.Row
-	for _, r := range s.Rows {
-		if r.Label == "root" {
-			root = append(root, r)
-		}
-	}
+	root := rootRows(t, s)
 	if len(root) != 1 || root[0].Status != check.Caution {
 		t.Fatalf("root rows: %+v", root)
 	}
-	if !slices.Contains(checktest.Labels(s), "Recent Root Logins") {
+}
+
+// rootRows returns the rows under the Recent Root Logins separator.
+func rootRows(t *testing.T, s *check.Section) []check.Row {
+	t.Helper()
+	i := slices.Index(checktest.Labels(s), "Recent Root Logins")
+	if i < 0 {
 		t.Fatalf("labels: %q", checktest.Labels(s))
+	}
+	return s.Rows[i+1:]
+}
+
+// From a RHEL 7 host, anonymised: `last` pads its columns, and with a remote
+// host each line ran past the report width and was cut off. The root rows
+// also repeated "root" as their label.
+func TestLoginLinesFitTheReport(t *testing.T) {
+	e := checktest.NewEnv(t, Check{}, nil)
+	e.Now = func() time.Time { return time.Date(2026, 10, 14, 18, 0, 0, 0, time.UTC) }
+	e.Fake.Expect("who", "root     pts/0        2026-10-14 17:37 (jump02.example.com)")
+	rootLast := "root     pts/0        jump02.example.c Wed Oct 14 17:37   still logged in\n" +
+		"root     pts/0        jump01.example.c Tue Sep 29 15:23 - 15:23  (00:00)\n\n" +
+		"wtmp begins Fri Sep  1 00:00:00 2023"
+	e.Fake.Expect("last -n 5 root", rootLast)
+	e.Fake.Expect("last -n 5", rootLast)
+	s := e.Run(Check{})
+	for _, r := range s.Rows {
+		if strings.Contains(r.Value, "  ") || len(r.Value) > 70 {
+			t.Errorf("row %q: %q is padded or too wide", r.Label, r.Value)
+		}
+	}
+	root := rootRows(t, s)
+	if len(root) != 2 || root[0].Label != "" || root[0].Value != "root pts/0 jump02.example.c Wed Oct 14 17:37 still logged in" {
+		t.Fatalf("root rows: %+v", root)
+	}
+	if got := s.AlertMsgs(); !slices.Equal(got, []string{"1 root login(s) today"}) {
+		t.Fatalf("alerts: %q", got)
 	}
 }
 

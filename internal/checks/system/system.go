@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/host"
 )
 
 func init() { check.Register(Check{}) }
@@ -45,11 +46,7 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	if h.Resolved != "" && firstLabel(h.Resolved) != firstLabel(h.Kernel) {
 		s.Add("Resolved name", h.Resolved+"  (shared/VIP name — not used as this host's identity)", check.Info)
 	}
-	osName := h.OS["PRETTY_NAME"]
-	if osName == "" {
-		osName = "unknown"
-	}
-	s.Add("OS", osName, check.OK)
+	s.Add("OS", host.OSName(h.OS), check.OK)
 	s.Add("Kernel", or(r.Run(ctx, "uname", "-r").Stdout, "unknown"), check.OK)
 	s.Add("Architecture", or(r.Run(ctx, "uname", "-m").Stdout, "unknown"), check.OK)
 

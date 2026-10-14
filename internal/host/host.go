@@ -124,6 +124,36 @@ func ParseOSRelease(b []byte) map[string]string {
 	return out
 }
 
+// OSName is the operating system as the report shows it: PRETTY_NAME, unless
+// it does not even carry the version, in which case NAME and VERSION.
+//
+// PRETTY_NAME is free text, and admins edit it: one RHEL 7 host in the
+// first real run had PRETTY_NAME=JBoss, with NAME and VERSION intact.
+// Checking for the major version keeps the vendor's wording where it is
+// genuine (SLES says "SUSE Linux Enterprise Server 15 SP5" there, against
+// NAME=SLES), and a release without VERSION_ID (Debian testing, Arch) keeps
+// its PRETTY_NAME as is.
+func OSName(osr map[string]string) string {
+	pretty := osr["PRETTY_NAME"]
+	id := osr["VERSION_ID"]
+	major, _, _ := strings.Cut(id, ".")
+	major, _, _ = strings.Cut(major, "-")
+	if pretty != "" && (major == "" || strings.Contains(pretty, major)) {
+		return pretty
+	}
+	version := osr["VERSION"]
+	if version == "" {
+		version = id
+	}
+	if name := strings.TrimSpace(osr["NAME"] + " " + version); osr["NAME"] != "" {
+		return name
+	}
+	if pretty != "" {
+		return pretty
+	}
+	return "unknown"
+}
+
 // PkgManager picks the package manager, in the order the Python version
 // did, with zypper last: dnf, yum, apt-get, zypper.
 func PkgManager(lookPath func(string) (string, bool)) string {

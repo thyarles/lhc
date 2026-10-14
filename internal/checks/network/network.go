@@ -54,8 +54,6 @@ func parseNetDev(b []byte) []iface {
 	return out
 }
 
-const ssLines = 4
-
 func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	s := check.NewSection("network", c.Meta().Title)
 	r := env.Runner
@@ -70,13 +68,20 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 		s.NeedTool(check.Tool{Name: "ss", RHELPkg: "iproute", DebPkg: "iproute2", SUSEPkg: "iproute2"})
 		return s
 	}
-	// Only the head of `ss -s`: total sockets and the TCP state counts.
-	lines := strings.Split(r.Run(ctx, "ss", "-s").Stdout, "\n")
+	// Only total sockets and the TCP state counts. Taking the first lines
+	// of `ss -s` let the per-transport table's header in without its rows.
+	// The padding and RHEL 7's trailing ", ports 0" are dropped so the TCP
+	// line fits the report.
 	var summary []string
-	for _, line := range lines[:min(ssLines, len(lines))] {
-		if line = strings.TrimSpace(line); line != "" {
-			summary = append(summary, line)
+	for _, line := range strings.Split(r.Run(ctx, "ss", "-s").Stdout, "\n") {
+		if !strings.HasPrefix(line, "Total:") && !strings.HasPrefix(line, "TCP:") {
+			continue
 		}
+		line = strings.Join(strings.Fields(line), " ")
+		if i := strings.LastIndex(line, "), ports "); i >= 0 {
+			line = line[:i+1]
+		}
+		summary = append(summary, line)
 	}
 	if len(summary) > 0 {
 		s.Separator("Connection Summary")
