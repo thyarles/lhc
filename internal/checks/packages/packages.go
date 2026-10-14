@@ -28,6 +28,8 @@ func (Check) Defaults() check.Config { return &Config{Toggle: check.On} }
 const (
 	stateKey = "packages"
 	listCap  = 20
+	// historyLines is the table header, its rule and five transactions.
+	historyLines = 7
 )
 
 // rpmQueryFormat is handed to rpm as one argument; rpm itself expands \n.
@@ -87,10 +89,16 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	}
 
 	// zypper keeps no numbered transaction history to show here.
+	//
+	// The history is a local database, but yum loads its plugins first: on a
+	// RHEL 7 host registered to an unreachable RHN, rhnplugin held a plain
+	// `yum history list` for over two minutes, and its "Loaded plugins" banner
+	// took the first lines of this list. -q drops the banner, -C keeps yum
+	// off the network, --noplugins skips rhnplugin altogether.
 	if pm == "dnf" || pm == "yum" {
 		var hist []string
-		for i, l := range strings.Split(r.Run(ctx, pm, "history", "list").Stdout, "\n") {
-			if i == 5 {
+		for i, l := range strings.Split(r.Run(ctx, pm, "-q", "-C", "--noplugins", "history", "list").Stdout, "\n") {
+			if i == historyLines {
 				break
 			}
 			if strings.TrimSpace(l) != "" {

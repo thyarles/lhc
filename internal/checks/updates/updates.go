@@ -4,6 +4,7 @@ package updates
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -64,7 +65,7 @@ func pending(ctx context.Context, s *check.Section, env *check.Env, cfg *Config)
 	r := env.Runner
 	pm := env.Host.PkgManager
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := runner.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	switch pm {
@@ -123,14 +124,41 @@ func failed(res runner.Result, okCodes ...int) bool {
 }
 
 // unknown reports a query that failed. Saying "0" there would claim the
-// host is fully patched when it simply could not reach its mirrors.
+// host is fully patched when it simply could not reach its mirrors. The
+// reason goes in the value, not a Detail: the text report prints details
+// only for flagged rows, and this one is INFO.
 func unknown(s *check.Section, res runner.Result) {
-	why := strings.TrimSpace(strings.SplitN(res.Stderr, "\n", 2)[0])
-	if why == "" {
-		why = "exit status " + strconv.Itoa(res.Code)
-	}
-	s.Add("Pending Updates", "Could not be determined", check.Info, check.Detail(why))
+	why := reason(res)
+	s.Add("Pending Updates", "Unknown: "+why, check.Info)
 	s.Fact("updates", "unknown", check.Info)
+}
+
+// reason picks the line of a failed query worth showing. yum's stderr can
+// open with Berkeley DB lock notices ("BDB2053 Freeing read locks ...")
+// left by an earlier yum that was killed, which say nothing about why this
+// one failed.
+func reason(res runner.Result) string {
+	if errors.Is(res.Err, context.DeadlineExceeded) {
+		return "timed out after " + timeout.String()
+	}
+	var lines []string
+	for _, l := range strings.Split(res.Stderr, "\n") {
+		if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "BDB") {
+			lines = append(lines, l)
+		}
+	}
+	for _, l := range lines {
+		low := strings.ToLower(l)
+		for _, w := range []string{"error", "unable", "cannot", "could not", "failed"} {
+			if strings.Contains(low, w) {
+				return l
+			}
+		}
+	}
+	if len(lines) > 0 {
+		return lines[0]
+	}
+	return "exit status " + strconv.Itoa(res.Code)
 }
 
 // fact sets the "updates" vital sign: "14 (3 security)", or "14" when the
