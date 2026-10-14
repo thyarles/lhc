@@ -3,6 +3,7 @@ package schedule
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"math/rand/v2"
 	"strings"
 	"testing"
@@ -245,5 +246,26 @@ func TestNextRun(t *testing.T) {
 func TestDescribe(t *testing.T) {
 	if got := Describe(sched("00:07", "")); got != "fires daily at 00:07, then waits a random 0–8h00m before running" {
 		t.Fatal(got)
+	}
+}
+
+// install.sh used to repeat this warning after `lhc install`; now only
+// `lhc install` says it, so it must say it for the systemd timer too.
+func TestInstallPointsOutThePythonCronEntryOnEitherBackend(t *testing.T) {
+	old := UnitDir
+	UnitDir = t.TempDir()
+	t.Cleanup(func() { UnitDir = old })
+	for _, b := range []Backend{Systemd, Cron} {
+		fake := checktest.NewRunner()
+		fake.Expect("crontab -l", "7 0 * * * /opt/healthcheck/run.sh  # "+LegacyCronTag)
+		var out bytes.Buffer
+		in := &Installer{Runner: fake, Out: func(f string, a ...any) { fmt.Fprintf(&out, f+"\n", a...) }}
+		job := Job{Binary: "/usr/local/bin/lhc", Config: "/etc/lhc/config.yaml", Log: "/var/log/lhc.log"}
+		if err := in.Install(context.Background(), b, config.Default().Schedule, job); err != nil {
+			t.Fatalf("%s: %v", b, err)
+		}
+		if n := strings.Count(out.String(), "Python linux-health-check cron entry"); n != 1 {
+			t.Errorf("%s: warned %d times:\n%s", b, n, out.String())
+		}
 	}
 }

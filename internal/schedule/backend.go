@@ -210,6 +210,7 @@ func (in *Installer) Install(ctx context.Context, b Backend, s config.Schedule, 
 			}
 		}
 		in.Out("  ✓ systemd timer %s enabled", TimerName)
+		in.warnLegacy(in.Runner.Run(ctx, "crontab", "-l").Stdout)
 		return nil
 	case Cron:
 		if err := in.removeSystemd(ctx); err != nil {
@@ -224,13 +225,19 @@ func (in *Installer) Install(ctx context.Context, b Backend, s config.Schedule, 
 			return err
 		}
 		in.Out("  ✓ crontab entry: %s", line)
-		if HasLegacyCron(current) {
-			in.Out("  ! The Python linux-health-check cron entry (%s) is still installed.", LegacyCronTag)
-			in.Out("    Remove it with `crontab -e` once lhc has run for a while; lhc does not touch it.")
-		}
+		in.warnLegacy(current)
 		return nil
 	}
 	return errors.New("no scheduler available (no systemd ≥ 229 as root, no crontab); run `lhc serve` under your own supervisor instead")
+}
+
+// warnLegacy points out the Python version's crontab entry, whichever backend
+// runs lhc: install.sh relies on this rather than repeating it.
+func (in *Installer) warnLegacy(crontab string) {
+	if HasLegacyCron(crontab) {
+		in.Out("  ! The Python linux-health-check cron entry (%s) is still installed.", LegacyCronTag)
+		in.Out("    Remove it with `crontab -e` once lhc has run for a while; lhc does not touch it.")
+	}
 }
 
 // Uninstall removes whatever lhc installed, from either backend.
