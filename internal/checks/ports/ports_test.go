@@ -313,3 +313,21 @@ func TestNeitherSSNorNetstat(t *testing.T) {
 		t.Fatal("baseline saved without any data")
 	}
 }
+
+// An interrupted or failing ss printed nothing, and the empty list became the
+// baseline: the next run flagged every real port as new.
+func TestAFailedListingKeepsTheBaseline(t *testing.T) {
+	prev := []string{`tcp 0.0.0.0:22 users:(("sshd"))`}
+	e := newEnv(t, nil)
+	e.Seed(t, stateKey, prev)
+	e.Fake.Expect("ss -tlnp", "").Code(-1).Stderr("timeout")
+	s := e.Run(Check{})
+	row := checktest.Rows(s)["Listening Sockets"]
+	if row.Status != check.Caution || row.Value != "Could not be listed" || !strings.Contains(row.Detail, "ss failed: timeout; baseline kept") {
+		t.Fatalf("row: %+v", row)
+	}
+	var saved []string
+	if !e.Loaded(t, stateKey, &saved) || !slices.Equal(saved, prev) {
+		t.Fatalf("baseline overwritten: %q", saved)
+	}
+}
