@@ -17,8 +17,9 @@ REPO="${BOARD_REPO:-thyarles/lhc}"
 [ $# -eq 2 ] || { echo "usage: $0 NUMBER \"Todo|In progress|In review|Done\"" >&2; exit 2; }
 num="$1" status="$2"
 
-# Issue or pull request? Both share one number sequence.
-if gh pr view "$num" --repo "$REPO" --json number >/dev/null 2>&1; then
+# Issue or pull request? Both share one number sequence. Not `gh pr view`:
+# it also succeeds for an issue number.
+if [ "$(gh api "repos/$REPO/issues/$num" --jq '.pull_request != null')" = true ]; then
     url="https://github.com/$REPO/pull/$num"
 else
     url="https://github.com/$REPO/issues/$num"

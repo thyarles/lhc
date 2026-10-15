@@ -75,7 +75,7 @@ func journal(now time.Time) string {
 // sensitive). The journal is preferred when journalctl exists; otherwise file
 // is grepped for today's date. A missing file counts zero.
 func Count(ctx context.Context, r runner.Runner, now time.Time, file, pattern string) int {
-	ctx, cancel := context.WithTimeout(ctx, countTimeout)
+	ctx, cancel := runner.WithTimeout(ctx, countTimeout)
 	defer cancel()
 	var script string
 	if _, ok := r.LookPath("journalctl"); ok {
@@ -110,7 +110,7 @@ func ParseCount(out string) int {
 // A pipeline rather than journalctl -g: RHEL 7's journalctl has no -g, and
 // streaming through grep keeps a noisy day's volume out of memory.
 func Today(ctx context.Context, r runner.Runner, now time.Time, sources []string, pattern string) (int, []string) {
-	ctx, cancel := context.WithTimeout(ctx, todayTimeout)
+	ctx, cancel := runner.WithTimeout(ctx, todayTimeout)
 	defer cancel()
 	tail := " | grep -iE " + Quote(pattern) + " | tail -" + strconv.Itoa(MaxLines)
 	var lines []string

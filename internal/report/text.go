@@ -82,8 +82,11 @@ func triageText(t *Triage) []string {
 		return nil
 	}
 	head := "ROUTINE CONFIRMATION — no new findings"
-	if t.NotifyAll {
+	switch {
+	case t.NotifyAll:
 		head = "NEW FINDINGS — PLEASE READ"
+	case t.HasNews():
+		head = "ROUTINE CONFIRMATION — nothing urgent"
 	}
 	lines := []string{"", "  " + head, "  (" + t.Summary + ")", ""}
 	for _, g := range t.groups() {

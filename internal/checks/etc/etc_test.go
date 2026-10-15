@@ -132,6 +132,15 @@ func TestCommVaultRegistryBackupsAreIgnoredByDefault(t *testing.T) {
 	}
 }
 
+// The first real run listed /etc/lhc/config.yaml.bak, written by
+// `lhc config set` during the install. The config itself stays visible.
+func TestLhcConfigBackupIsIgnored(t *testing.T) {
+	args := strings.Join(findArgs(Check{}.Defaults().(*Config)), " ")
+	if !strings.Contains(args, "-not -path /etc/lhc/*.bak") || strings.Contains(args, "/etc/lhc/*.yaml") {
+		t.Fatalf("args: %s", args)
+	}
+}
+
 func TestExtraIgnorePatternsComeFromTheConfig(t *testing.T) {
 	args := strings.Join(findArgs(&Config{Toggle: check.On, Ignore: []string{"/etc/foo/*", "/etc/bar/*.bak"}}), " ")
 	for _, want := range []string{"-not -path /etc/foo/*", "-not -path /etc/bar/*.bak", "-not -path */mtab"} {
@@ -153,8 +162,8 @@ func TestIgnorePatternsAreCarriedVerbatim(t *testing.T) {
 	if slices.Contains(args, "rm") || slices.Contains(args, ";") {
 		t.Fatalf("pattern was split: %q", args)
 	}
-	if n := countOf(args, "-path"); n != 9 {
-		t.Fatalf("%d -path exclusions, want 8 built-in + 1", n)
+	if n := countOf(args, "-path"); n != len(builtinIgnore)+1 {
+		t.Fatalf("%d -path exclusions, want %d built-in + 1", n, len(builtinIgnore))
 	}
 }
 

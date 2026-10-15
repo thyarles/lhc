@@ -157,6 +157,11 @@ type triageGroup struct {
 	Status check.Status
 }
 
+// HasNews reports a condition that is new or got worse this run. Below
+// alerts.notify_all_on the report is still routine, but it must not then say
+// "no new findings" above a list of new findings.
+func (t *Triage) HasNews() bool { return len(t.New)+len(t.Escalated) > 0 }
+
 func (t *Triage) groups() []triageGroup {
 	all := []triageGroup{
 		{"Needs attention — new", t.New, check.Unhealthy},

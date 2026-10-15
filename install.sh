@@ -121,7 +121,13 @@ if [ -f "$CONF" ]; then
     say "Config kept as-is: $CONF"
 else
     say "Creating $CONF"
-    "$BIN_DIR/lhc" config init --config "$CONF"
+    out="$("$BIN_DIR/lhc" config init --config "$CONF")" || die "could not create $CONF"
+    # init's "Next: lhc config set ..." hint is what --set is about to do.
+    if [ ${#SETS[@]} -gt 0 ]; then
+        printf '%s\n' "$out" | grep -v '^  Next:' || true
+    else
+        printf '%s\n' "$out"
+    fi
 fi
 
 if [ ${#SETS[@]} -gt 0 ]; then
@@ -134,7 +140,8 @@ if [ "$SCHEDULE" -eq 1 ]; then
     "$BIN_DIR/lhc" install --config "$CONF" ${SCHED[@]+"${SCHED[@]}"}
 fi
 
-if crontab -l 2>/dev/null | grep -q 'linux-healthcheck-managed'; then
+# `lhc install` already says this when it schedules.
+if [ "$SCHEDULE" -eq 0 ] && crontab -l 2>/dev/null | grep -q 'linux-healthcheck-managed'; then
     say "The Python linux-health-check cron entry is still installed"
     printf '    lhc does not remove it. Once lhc has run for a while, delete the line\n'
     printf '    marked linux-healthcheck-managed with: crontab -e\n'
@@ -142,4 +149,5 @@ fi
 
 say "Done. Next:"
 printf '    lhc config show --diff     # what this host overrides\n'
+printf '    lhc test-mail              # check the mail settings in seconds\n'
 printf '    lhc report                 # preview a report (sends nothing)\n\n'

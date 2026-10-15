@@ -30,6 +30,17 @@ const dnfHistory = `ID     | Command line             | Date and time    | Actio
     40 | install vim              | 2025-12-01 09:00 | Install        |    2
     39 | install tmux             | 2025-11-01 09:00 | Install        |    1`
 
+// yum -q history list on RHEL 7: no plugin banner, six transactions.
+const yumHistory = `ID     | Login user               | Date and time    | Action(s)      | Altered
+-------------------------------------------------------------------------------
+    18 | root <root>              | 2024-07-24 13:37 | Install        |    1
+    17 | root <root>              | 2024-03-02 10:11 | Update         |   12
+    16 | root <root>              | 2023-11-20 09:40 | Install        |    3
+    15 | root <root>              | 2023-08-14 16:05 | I, U           |   41
+    14 | root <root>              | 2023-05-02 11:12 | Install        |    1
+    13 | root <root>              | 2023-01-09 08:30 | Update         |    7
+history list`
+
 func newEnv(t *testing.T, pm string) *checktest.Env {
 	e := checktest.NewEnv(t, Check{}, nil)
 	e.Host.PkgManager = pm
@@ -136,18 +147,35 @@ func TestLongChangeListsAreCapped(t *testing.T) {
 	}
 }
 
-func TestDnfTransactionHistoryShowsFiveLines(t *testing.T) {
+func TestDnfTransactionHistoryShowsTheTable(t *testing.T) {
 	e := newEnv(t, "dnf")
 	e.Fake.Expect("rpm -qa", rpmOut)
-	e.Fake.Expect("dnf history list", dnfHistory)
+	e.Fake.Expect("history list", dnfHistory)
 	s := e.Run(Check{})
 	labels := checktest.Labels(s)
 	i := slices.Index(labels, "Recent Transaction History")
-	if i < 0 || len(labels)-i-1 != 5 {
+	if i < 0 || len(labels)-i-1 != 6 {
 		t.Fatalf("labels: %q", labels)
 	}
-	if !strings.Contains(s.Rows[len(s.Rows)-1].Value, "install vim") {
+	if !strings.Contains(s.Rows[len(s.Rows)-1].Value, "install tmux") {
 		t.Fatalf("last row: %+v", s.Rows[len(s.Rows)-1])
+	}
+}
+
+// RHEL 7 registered to an unreachable RHN: plain `yum history list` waited
+// 2m08s on rhnplugin, and "Loaded plugins: ..." took two of the five lines.
+func TestYumHistoryRunsOfflineWithoutPlugins(t *testing.T) {
+	e := newEnv(t, "yum")
+	e.Fake.Expect("rpm -qa", rpmOut)
+	e.Fake.Expect("yum -q -C --noplugins history list", yumHistory)
+	s := e.Run(Check{})
+	labels := checktest.Labels(s)
+	i := slices.Index(labels, "Recent Transaction History")
+	if i < 0 || len(labels)-i-1 != historyLines {
+		t.Fatalf("labels: %q (calls %q)", labels, e.Fake.Calls())
+	}
+	if !strings.HasPrefix(s.Rows[i+1].Value, "ID ") {
+		t.Fatalf("first history row: %q", s.Rows[i+1].Value)
 	}
 }
 

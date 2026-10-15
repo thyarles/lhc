@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 func init() { check.Register(Check{}) }
@@ -96,7 +97,7 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 // client runs fail2ban-client with a short timeout: a wedged fail2ban server
 // makes the client hang on its socket.
 func client(ctx context.Context, env *check.Env, args ...string) string {
-	ctx, cancel := context.WithTimeout(ctx, clientTimeout)
+	ctx, cancel := runner.WithTimeout(ctx, clientTimeout)
 	defer cancel()
 	return env.Runner.Run(ctx, "fail2ban-client", args...).Stdout
 }

@@ -62,7 +62,7 @@ the broad list only when something NEW needs attention.`,
 	root.PersistentFlags().BoolVarP(&a.verbose, "verbose", "v", false, "debug logging")
 	root.AddCommand(
 		newRunCmd(a), newReportCmd(a), newConfigCmd(a), newInstallCmd(a), newUninstallCmd(a),
-		newServeCmd(a), newToolsCmd(a), newPathsCmd(a), newVersionCmd(),
+		newServeCmd(a), newTestMailCmd(a), newToolsCmd(a), newPathsCmd(a), newVersionCmd(),
 	)
 	return root
 }

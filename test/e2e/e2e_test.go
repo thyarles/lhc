@@ -234,6 +234,37 @@ func TestConfigValidateRejectsATypo(t *testing.T) {
 	}
 }
 
+func TestTestMailReachesTheDailyListAndTouchesNoState(t *testing.T) {
+	r := relay(t)
+	h := newHost(t, r)
+	h.run(0, "test-mail")
+	msgs := r.Messages()
+	if len(msgs) != 1 || len(msgs[0].To) != 1 || msgs[0].To[0] != "ops@example.com" {
+		t.Fatalf("want one message to the daily list, got %+v", msgs)
+	}
+	if !strings.Contains(msgs[0].Data, "lhc test message from e2e.example.com") || !strings.Contains(h.stdout, "✓ Test message accepted") {
+		t.Fatalf("stdout:\n%s\nmessage:\n%.600s", h.stdout, msgs[0].Data)
+	}
+	if entries, err := os.ReadDir(h.state); err == nil && len(entries) > 0 {
+		t.Fatalf("lhc test-mail wrote state: %v", entries)
+	}
+
+	h.run(0, "test-mail", "--to", "someone@example.com")
+	if msgs = r.Messages(); len(msgs) != 2 || msgs[1].To[0] != "someone@example.com" {
+		t.Fatalf("--to ignored: %+v", msgs[1:])
+	}
+}
+
+func TestTestMailFailsClearlyWhenTheRelayIsDown(t *testing.T) {
+	r := relay(t)
+	h := newHost(t, r)
+	r.Close()
+	h.run(2, "test-mail")
+	if !strings.Contains(h.stdout, "✗ Test message failed") {
+		t.Fatalf("stdout:\n%s\nstderr:\n%s", h.stdout, h.stderr)
+	}
+}
+
 func readFile(t *testing.T, p string) string {
 	b, _ := os.ReadFile(p)
 	return string(b)

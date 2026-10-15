@@ -23,6 +23,38 @@ RAW	  1         0         1
 UDP	  9         6         3
 TCP	  23        17        6`
 
+// RHEL 7's ss prints synrecv and ports too; the table header used to follow
+// with none of its rows.
+const ssOutRHEL7 = `Total: 273 (kernel 318)
+TCP:   39 (estab 13, closed 1, orphaned 0, synrecv 0, timewait 0/0), ports 0
+
+Transport Total     IP        IPv6
+*	  318       -         -
+RAW	  0         0         0
+UDP	  19        11        8
+TCP	  38        20        18
+INET	  57        31        26
+FRAG	  0         0         0`
+
+func TestConnectionSummaryIsTotalAndTCP(t *testing.T) {
+	e := checktest.NewEnv(t, Check{}, nil)
+	e.Fake.Tool("ss")
+	e.Fake.Expect("ss -s", ssOutRHEL7)
+	s := e.Run(Check{})
+	i := slices.Index(checktest.Labels(s), "Connection Summary")
+	if i < 0 {
+		t.Fatalf("labels: %q", checktest.Labels(s))
+	}
+	var got []string
+	for _, r := range s.Rows[i+1:] {
+		got = append(got, r.Value)
+	}
+	want := []string{"Total: 273 (kernel 318)", "TCP: 39 (estab 13, closed 1, orphaned 0, synrecv 0, timewait 0/0)"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("summary %q", got)
+	}
+}
+
 func TestInterfacesSkipLoopback(t *testing.T) {
 	e := checktest.NewEnv(t, Check{}, nil)
 	e.Fake.File("/proc/net/dev", netDev)
@@ -73,8 +105,7 @@ func TestConnectionSummaryIsTheHeadOfSS(t *testing.T) {
 	want := []string{
 		"--Connection Summary",
 		"|Total: 412",
-		"|TCP:   37 (estab 12, closed 14, orphaned 0, timewait 9)",
-		"|Transport Total     IP        IPv6",
+		"|TCP: 37 (estab 12, closed 14, orphaned 0, timewait 9)",
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("rows %q", got)

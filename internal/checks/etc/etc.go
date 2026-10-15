@@ -13,6 +13,7 @@ import (
 
 	"github.com/thyarles/lhc/internal/check"
 	"github.com/thyarles/lhc/internal/checks/system"
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 func init() { check.Register(Check{}) }
@@ -45,10 +46,14 @@ var sensitive = []string{
 }
 
 // builtinIgnore is always skipped; Config.Ignore adds to it.
+//
+// lhc's own config.yaml stays visible on purpose: whoever quiets lhc on a
+// host shows up in that host's report. The .bak that `lhc config set`
+// leaves beside it is only noise.
 var builtinIgnore = []string{
 	"*/mtab", "*/adjtime", "*/ld.so.cache", "*/resolv.conf",
 	"*/machine-id", "*/.pwd.lock", "*/blkid.tab*",
-	"*/network/interfaces.d/*",
+	"*/network/interfaces.d/*", "/etc/lhc/*.bak",
 }
 
 const (
@@ -86,7 +91,7 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	s := check.NewSection("etc", c.Meta().Title)
 	r := env.Runner
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := runner.WithTimeout(ctx, timeout)
 	defer cancel()
 	var files []string
 	for _, f := range strings.Split(r.Run(ctx, "find", findArgs(cfg)...).Stdout, "\n") {

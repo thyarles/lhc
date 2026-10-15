@@ -1,6 +1,7 @@
 package updates
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/thyarles/lhc/internal/check"
 	"github.com/thyarles/lhc/internal/checktest"
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 func newEnv(t *testing.T, pm string, cfg *Config) *checktest.Env {
@@ -170,7 +172,7 @@ func TestUnreachableRepositoriesAreNotReportedAsZero(t *testing.T) {
 	s := e.Run(Check{})
 	checktest.NoAlerts(t, s)
 	row := checktest.Rows(s)["Pending Updates"]
-	if row.Value != "Could not be determined" || !strings.Contains(row.Detail, "Failed to download metadata") {
+	if row.Value != "Unknown: Error: Failed to download metadata for repo 'baseos'" {
 		t.Fatalf("Pending Updates row: %+v", row)
 	}
 	// "0" would claim the host is patched; the strip says it does not know.
@@ -240,8 +242,29 @@ func TestZypperLockedIsNotReportedAsZero(t *testing.T) {
 	e := newEnv(t, "zypper", nil)
 	e.Fake.Expect("list-updates", "").Code(7).Stderr("System management is locked by the application with pid 1234 (zypper).")
 	s := e.Run(Check{})
-	if got := checktest.Rows(s)["Pending Updates"].Value; got != "Could not be determined" {
+	if got := checktest.Rows(s)["Pending Updates"].Value; got != "Unknown: System management is locked by the application with pid 1234 (zypper)." {
 		t.Fatalf("Pending Updates = %q", got)
+	}
+}
+
+// RHEL 7 registered to an unreachable RHN: yum's stderr opened with lock
+// notices from an earlier killed yum, and the report said only "timeout".
+func TestUnknownGivesTheReason(t *testing.T) {
+	cases := []struct {
+		name string
+		res  runner.Result
+		want string
+	}{
+		{"timeout", runner.Result{Code: -1, Err: context.DeadlineExceeded, Stderr: "Exiting on user cancel"}, "timed out after 1m30s"},
+		{"error line after lock notices", runner.Result{Code: 1, Stderr: "BDB2053 Freeing read locks for locker 0x392c: 28740/140305083197248\n" +
+			"There was an error communicating with RHN.\nRed Hat Satellite or RHN Classic support will be disabled."}, "There was an error communicating with RHN."},
+		{"no error word", runner.Result{Code: 1, Stderr: "BDB2053 Freeing read locks\nsomething odd"}, "something odd"},
+		{"silent", runner.Result{Code: 1}, "exit status 1"},
+	}
+	for _, c := range cases {
+		if got := reason(c.res); got != c.want {
+			t.Errorf("%s: reason = %q, want %q", c.name, got, c.want)
+		}
 	}
 }
 

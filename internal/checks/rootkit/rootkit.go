@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 func init() { check.Register(Check{}) }
@@ -69,7 +70,7 @@ func rkhunter(ctx context.Context, s *check.Section, env *check.Env) {
 		s.NeedTool(check.Tool{Name: "rkhunter", Optional: true})
 		return
 	}
-	ctx, cancel := context.WithTimeout(ctx, rkhunterTimeout)
+	ctx, cancel := runner.WithTimeout(ctx, rkhunterTimeout)
 	defer cancel()
 	out := strings.Split(env.Runner.Run(ctx, "rkhunter", "--check", "--sk", "--rwo").Stdout, "\n")
 	var warnings []string

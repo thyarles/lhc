@@ -89,7 +89,7 @@
 {{- with .Triage}}
 {{- $accent := pal 0}}{{if .NotifyAll}}{{$accent = pal 3}}{{end}}
 <div style="border:1px solid {{T.Rule}};border-left:4px solid {{$accent.Dot}};border-radius:6px;padding:14px 16px;margin-bottom:22px;background:{{T.Surface2}}">
-<div class="hc-ink" style="font-size:14px;font-weight:700;color:{{T.Ink}};background:{{T.Surface2}}">{{if .NotifyAll}}This report contains new findings — please read{{else}}Routine confirmation that the health check ran — no new findings{{end}}</div>
+<div class="hc-ink" style="font-size:14px;font-weight:700;color:{{T.Ink}};background:{{T.Surface2}}">{{if .NotifyAll}}This report contains new findings — please read{{else if .HasNews}}Routine confirmation that the health check ran — nothing urgent{{else}}Routine confirmation that the health check ran — no new findings{{end}}</div>
 <div class="hc-muted" style="font-size:11px;color:{{T.Muted}};margin-top:3px;background:{{T.Surface2}}">{{.Summary}}</div>
 {{- range groups .}}
 <div style="margin:10px 0 0">

@@ -32,7 +32,7 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 
 	if who := lines(r.Run(ctx, "who").Stdout); len(who) > 0 {
 		for _, l := range who {
-			s.Add("Logged In", strings.TrimSpace(l), check.Info)
+			s.Add("Logged In", l, check.Info)
 		}
 	} else {
 		s.Add("Logged In", "None", check.OK)
@@ -68,7 +68,7 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 			st = check.Caution
 			today++
 		}
-		s.Add("root", trunc(l, 90), st)
+		s.Add("", trunc(l, 90), st)
 	}
 	if today > 0 {
 		s.Alert(check.Caution, fmt.Sprintf("%d root login(s) today", today))
@@ -94,11 +94,14 @@ func loggedInOn(line string, now time.Time) bool {
 	return false
 }
 
+// lines returns the non-empty lines of who or last output with each run of
+// spaces collapsed to one. The column padding pushed a RHEL 7 `last` line
+// with a remote host past the 78-column report, where it was cut off.
 func lines(out string) []string {
 	var res []string
 	for _, l := range strings.Split(out, "\n") {
-		if strings.TrimSpace(l) != "" {
-			res = append(res, l)
+		if f := strings.Fields(l); len(f) > 0 {
+			res = append(res, strings.Join(f, " "))
 		}
 	}
 	return res

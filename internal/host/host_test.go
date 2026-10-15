@@ -97,3 +97,42 @@ func TestPkgManagerPreference(t *testing.T) {
 		}
 	}
 }
+
+func TestOSName(t *testing.T) {
+	cases := []struct {
+		name string
+		osr  string
+		want string
+	}{
+		{"RHEL 7 with an edited PRETTY_NAME", `NAME="Red Hat Enterprise Linux Server"
+VERSION="7.9 (Maipo)"
+VERSION_ID="7.9"
+PRETTY_NAME=JBoss`, "Red Hat Enterprise Linux Server 7.9 (Maipo)"},
+		{"RHEL 9", `NAME="Red Hat Enterprise Linux"
+VERSION="9.4 (Plow)"
+VERSION_ID="9.4"
+PRETTY_NAME="Red Hat Enterprise Linux 9.4 (Plow)"`, "Red Hat Enterprise Linux 9.4 (Plow)"},
+		{"Debian 12", `PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"
+NAME="Debian GNU/Linux"
+VERSION_ID="12"
+VERSION="12 (bookworm)"`, "Debian GNU/Linux 12 (bookworm)"},
+		{"Ubuntu 22.04", `PRETTY_NAME="Ubuntu 22.04.4 LTS"
+NAME="Ubuntu"
+VERSION_ID="22.04"
+VERSION="22.04.4 LTS (Jammy Jellyfish)"`, "Ubuntu 22.04.4 LTS"},
+		{"SLES 15 SP5", `NAME="SLES"
+VERSION="15-SP5"
+VERSION_ID="15.5"
+PRETTY_NAME="SUSE Linux Enterprise Server 15 SP5"`, "SUSE Linux Enterprise Server 15 SP5"},
+		{"Debian testing", `PRETTY_NAME="Debian GNU/Linux trixie/sid"
+NAME="Debian GNU/Linux"`, "Debian GNU/Linux trixie/sid"},
+		{"only NAME and VERSION_ID", `NAME="Some Linux"
+VERSION_ID="3"`, "Some Linux 3"},
+		{"nothing", ``, "unknown"},
+	}
+	for _, c := range cases {
+		if got := OSName(ParseOSRelease([]byte(c.osr))); got != c.want {
+			t.Errorf("%s: OSName = %q, want %q", c.name, got, c.want)
+		}
+	}
+}

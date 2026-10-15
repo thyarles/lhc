@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -28,7 +27,7 @@ func newToolsCmd(a *app) *cobra.Command {
 			if b, err := r.ReadFile("/etc/os-release"); err == nil {
 				osr = host.ParseOSRelease(b)
 			}
-			a.printf("  OS       : %s", or(osr["PRETTY_NAME"], "unknown"))
+			a.printf("  OS       : %s", host.OSName(osr))
 			a.printf("  Packages : %s", or(pm, "(not detected)"))
 			a.printf("")
 			var missing []check.Tool
@@ -66,7 +65,7 @@ func newToolsCmd(a *app) *cobra.Command {
 			for _, t := range missing {
 				pkg := t.Package(pm)
 				a.printf("  → %s", t.InstallCmd(pm))
-				ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Minute)
+				ctx, cancel := runner.WithTimeout(cmd.Context(), 5*time.Minute)
 				res := r.Run(ctx, pm, installArgs(pm, pkg)...)
 				cancel()
 				if !res.OK() {

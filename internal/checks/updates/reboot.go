@@ -30,7 +30,7 @@ type rebootAnswer struct {
 // reboot adds the "Reboot Required" row. When no method gives an answer
 // there is no row at all: unknown is not a finding.
 func reboot(ctx context.Context, s *check.Section, env *check.Env, cfg *Config) {
-	ctx, cancel := context.WithTimeout(ctx, rebootTimeout)
+	ctx, cancel := runner.WithTimeout(ctx, rebootTimeout)
 	defer cancel()
 	a, ok := rebootRequired(ctx, env.Runner, env.Host.PkgManager)
 	if !ok {

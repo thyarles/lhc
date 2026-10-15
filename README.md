@@ -74,7 +74,9 @@ The installer downloads the release archive, verifies its SHA-256, installs
 `/usr/local/bin/lhc`, writes `/etc/lhc/config.yaml` and schedules the run:
 a **systemd timer** where systemd 229+ is available, otherwise a **crontab**
 entry (RHEL 7). Re-running it upgrades in place and keeps the config, state
-and reports. `--help` lists the options (`--time 06:30`, `--every 6h`,
+and reports. Check the mail settings straight away with `lhc test-mail`:
+it takes seconds, where a first `lhc run` can take minutes on a host whose
+package repositories are slow or unreachable. `--help` lists the options (`--time 06:30`, `--every 6h`,
 `--no-schedule`, a specific version, ...).
 
 Without root, or to try it first: download `lhc_linux_amd64.tar.gz` from the
@@ -88,6 +90,7 @@ lhc report                    # run the checks and print the report; sends and c
 lhc report --format html > r.html
 lhc run                       # what the schedule runs: check, save, mail
 lhc run --dry-run             # same, but print instead of mailing
+lhc test-mail [--to ADDR]     # send a short test message through the relay; runs no checks
 
 lhc config show --diff        # what this host changes from the defaults
 lhc config set schedule.time=06:30 checks.disk.caution=85
@@ -166,9 +169,12 @@ mail. If the relay is down, the next run treats it as new and tries again.
 lhc does not read `healthcheck.conf` or the Python state files; it starts its
 own baselines on the first run. Translate the few settings you changed with
 `lhc config set` (e.g. `[thresholds] disk_caution` is now
-`checks.disk.caution`), install lhc, and once it has run for a while remove
-the Python cron entry (the line marked `linux-healthcheck-managed`). The
-installer tells you when that entry is still present; it never removes it.
+`checks.disk.caution`), install lhc, check the relay with `lhc test-mail`
+(lhc sends as `lhc@<host>`, the Python version as `healthcheck@<domain>`; set
+`smtp.from` if your mail filter only trusts the old sender), and once it has
+run for a while remove the Python cron entry (the line marked
+`linux-healthcheck-managed`). The installer tells you when that entry is
+still present; it never removes it.
 
 ## Development
 

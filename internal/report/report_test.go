@@ -460,6 +460,30 @@ func TestTextReportMarksARoutineRun(t *testing.T) {
 	}
 }
 
+// A CAUTION below alerts.notify_all_on is routine, but the first real run
+// said "no new findings" right above "Needs attention — new".
+func TestRoutineHeadlineNeverDeniesNewFindings(t *testing.T) {
+	cases := []struct {
+		name       string
+		tr         *Triage
+		text, html string
+	}{
+		{"alert", &Triage{NotifyAll: true, New: []string{diskMsg}}, "NEW FINDINGS — PLEASE READ", "new findings — please read"},
+		{"new below the alert level", &Triage{New: []string{diskMsg}}, "ROUTINE CONFIRMATION — nothing urgent", "ran — nothing urgent"},
+		{"worse below the alert level", &Triage{Escalated: []string{diskMsg}}, "ROUTINE CONFIRMATION — nothing urgent", "ran — nothing urgent"},
+		{"only known conditions", &Triage{Ongoing: []string{diskMsg}}, "ROUTINE CONFIRMATION — no new findings", "ran — no new findings"},
+	}
+	for _, c := range cases {
+		m := model("h", c.tr, diskSections()...)
+		if out := Text(m); !strings.Contains(out, c.text) {
+			t.Errorf("%s: text has no %q", c.name, c.text)
+		}
+		if out := html(t, m); !strings.Contains(out, c.html) {
+			t.Errorf("%s: html has no %q", c.name, c.html)
+		}
+	}
+}
+
 func TestEveryTriageGroupAppearsWhenPopulated(t *testing.T) {
 	tr := &Triage{
 		NotifyAll: true, New: []string{"a new thing"}, Escalated: []string{"a worse thing"},
