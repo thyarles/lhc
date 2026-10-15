@@ -29,7 +29,7 @@ Same checks and the same alert behaviour, with no interpreter to install.
 | services | failed systemd units, units stuck activating across two runs |
 | docker | fresh crashes and restart loops (old stopped containers are not news) |
 | kubernetes | node readiness/pressure/cordons, broken pods, restart growth, lost PVCs, node-level events |
-| updates | pending (and security) updates: dnf, yum, apt, zypper; **a reboot waiting** for an installed kernel or core library |
+| updates | pending (and security) updates: dnf, yum, apt, zypper; **a reboot waiting** for an installed kernel or core library, dated from that update: CAUTION after 14 days, UNHEALTHY after 30 (`reboot_caution_days`, `reboot_unhealthy_days`) |
 | users | logged-in users, root logins **today** |
 | auth | failed SSH attempts today, top sources, sudo use |
 | fail2ban | jails and bans (bans are fail2ban working, not a problem) |

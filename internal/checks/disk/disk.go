@@ -184,7 +184,8 @@ func pseudoDevice(dev string) bool {
 	case "shm", "nsfs":
 		return true
 	}
-	for _, k := range []string{"tmpfs", "udev", "overlay", "squashfs"} {
+	// efivarfs is the firmware's variable store, mounted on UEFI hosts.
+	for _, k := range []string{"tmpfs", "udev", "overlay", "squashfs", "efivarfs"} {
 		if strings.Contains(dev, k) {
 			return true
 		}
@@ -279,7 +280,7 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 		}
 		current[r.path] = math.Round(r.pct*10) / 10
 		s.Add(r.path,
-			fmt.Sprintf("%.0f%% · %s free of %s", r.pct, fmtBytes(r.avail), fmtBytes(r.size)),
+			fmt.Sprintf("%.0f%% · %s free of %s", r.pct, size(r.avail), size(r.size)),
 			st, check.Meter(r.pct), check.Delta(deltaNote(prev, r.path, r.pct)))
 	}
 	if fullest >= 0 {
@@ -312,23 +313,18 @@ func deltaNote(prev map[string]float64, key string, now float64) string {
 	return fmt.Sprintf("%+.1f pts since last run", diff)
 }
 
-// fmtBytes matches the Python report: integer-divide by 1024 until the value
-// fits, then print it with no decimals ("1 GB", not "1.5 GB").
-func fmtBytes(n int64) string {
-	for _, unit := range []string{"B", "KB", "MB", "GB", "TB"} {
-		if n > -1024 && n < 1024 {
-			return fmt.Sprintf("%d %s", n, unit)
-		}
-		n = floorDiv(n, 1024)
+// size prints n bytes in the largest unit that keeps it under 1024, with
+// one decimal below 10. Whole units read "1 GB free of 1 GB" on a /boot a
+// quarter full. Values that would round to 1024 move up a unit.
+func size(n int64) string {
+	units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
+	f, i := float64(n), 0
+	for i < len(units)-1 && math.Abs(f) >= 1023.5 {
+		f /= 1024
+		i++
 	}
-	return fmt.Sprintf("%d PB", n)
-}
-
-// floorDiv is Python's //, which rounds towards minus infinity.
-func floorDiv(a, b int64) int64 {
-	q := a / b
-	if a%b != 0 && (a < 0) != (b < 0) {
-		q--
+	if i > 0 && math.Abs(f) < 9.95 {
+		return fmt.Sprintf("%.1f %s", f, units[i])
 	}
-	return q
+	return fmt.Sprintf("%.0f %s", f, units[i])
 }

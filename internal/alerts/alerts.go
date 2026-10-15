@@ -238,6 +238,18 @@ func Evaluate(alerts []check.Alert, store state.Store, p Policy, now time.Time) 
 			parts = append(parts, fmt.Sprintf("%d still unresolved", n))
 		}
 		d.Reason = strings.Join(parts, "; ")
+	case len(d.New)+len(d.Escalated) > 0:
+		// Something did change; it is only below the level that interrupts
+		// the broad list. "No conditions requiring attention" said otherwise.
+		var parts []string
+		if n := len(d.New); n > 0 {
+			parts = append(parts, fmt.Sprintf("%d new condition(s)", n))
+		}
+		if n := len(d.Escalated); n > 0 {
+			parts = append(parts, fmt.Sprintf("%d worsened", n))
+		}
+		d.Reason = fmt.Sprintf("%s below alerts.notify_all_on (%s), daily list only",
+			strings.Join(parts, "; "), strings.ToLower(p.NotifyAllOn.Word()))
 	case len(d.Ongoing) > 0:
 		d.Reason = fmt.Sprintf("%d known condition(s) unchanged since the last notification — report only, no alert sent", len(d.Ongoing))
 	default:

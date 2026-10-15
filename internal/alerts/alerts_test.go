@@ -216,6 +216,15 @@ func TestThresholdUnhealthySuppressesCautionAlerts(t *testing.T) {
 	}
 }
 
+// A new CAUTION under notify_all_on=unhealthy was logged as "no conditions
+// requiring attention" right next to the condition.
+func TestANewConditionBelowTheThresholdSaysSo(t *testing.T) {
+	d := run(t, state.NewMemory(), DefaultPolicy, []check.Alert{disk}, at(1, 0))
+	if want := "1 new condition(s) below alerts.notify_all_on (unhealthy), daily list only"; d.Reason != want {
+		t.Fatalf("reason %q, want %q", d.Reason, want)
+	}
+}
+
 func TestThresholdUnhealthyStillAlertsOnUnhealthy(t *testing.T) {
 	d := run(t, state.NewMemory(), DefaultPolicy, []check.Alert{{Status: check.Unhealthy, Msg: "RAM at 99%"}}, at(1, 0))
 	if !d.NotifyAll {

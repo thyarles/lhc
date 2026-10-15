@@ -13,7 +13,7 @@ const gib = 1 << 30
 
 func free(memUsed, swapTotal, swapUsed int64) string {
 	return "               total        used        free      shared  buff/cache   available\n" +
-		"Mem:     " + itoa(16*gib) + " " + itoa(memUsed) + " " + itoa(16*gib-memUsed) + " 0 0 0\n" +
+		"Mem:     " + itoa(16*gib) + " " + itoa(memUsed) + " " + itoa(16*gib-memUsed) + " 0 0 " + itoa(16*gib-memUsed) + "\n" +
 		"Swap:    " + itoa(swapTotal) + " " + itoa(swapUsed) + " " + itoa(swapTotal-swapUsed) + "\n"
 }
 
@@ -27,7 +27,7 @@ func TestRowsAndValueFormat(t *testing.T) {
 		t.Fatalf("labels: %v", got)
 	}
 	mem := checktest.Rows(s)["Mem"]
-	if mem.Value != "25% · 12 GB free of 16 GB" || mem.Status != check.OK {
+	if mem.Value != "25% · 12 GB avail of 16 GB" || mem.Status != check.OK {
 		t.Fatalf("Mem row: %+v", mem)
 	}
 	if mem.Meter == nil || *mem.Meter != 25 {
@@ -78,6 +78,33 @@ func TestFullSwapIsFlaggedButNeverAlerts(t *testing.T) {
 }
 
 // Kubernetes nodes run without swap on purpose: "Disabled", not an idle 0%.
+// The RHEL 10 host read "31% · 1014 MB free of 15 GB": free(1)'s "free"
+// leaves out the page cache. "available" is the figure that matches the 31%.
+func TestMemShowsAvailableNotFree(t *testing.T) {
+	e := checktest.NewEnv(t, Check{}, nil)
+	e.Fake.Expect("free -b", `               total        used        free      shared  buff/cache   available
+Mem:     16106127360  4993040384  1063256064    52428800 10049830912 11113086976
+Swap:     4294967296           0  4294967296`)
+	rows := checktest.Rows(e.Run(Check{}))
+	if got := rows["Mem"].Value; got != "31% · 10 GB avail of 15 GB" {
+		t.Fatalf("Mem = %q", got)
+	}
+	if got := rows["Swap"].Value; got != "0% · 4.0 GB free of 4.0 GB" {
+		t.Fatalf("Swap = %q", got)
+	}
+}
+
+// procps before 3.3.10 has no "available" column: free it is.
+func TestOldFreeWithoutAvailable(t *testing.T) {
+	e := checktest.NewEnv(t, Check{}, nil)
+	e.Fake.Expect("free -b", `             total       used       free     shared    buffers     cached
+Mem:    4294967296 1073741824 3221225472          0          0          0
+Swap:            0          0          0`)
+	if got := checktest.Rows(e.Run(Check{}))["Mem"].Value; got != "25% · 3.0 GB free of 4.0 GB" {
+		t.Fatalf("Mem = %q", got)
+	}
+}
+
 func TestNoSwapIsDisabled(t *testing.T) {
 	e := checktest.NewEnv(t, Check{}, nil)
 	e.Fake.Expect("free -b", free(4*gib, 0, 0))
@@ -139,20 +166,25 @@ func TestSavesRoundedPercentages(t *testing.T) {
 	}
 }
 
-func TestFmtBytes(t *testing.T) {
+// One decimal below 10: whole units read "1 GB free of 1 GB" on a /boot a
+// quarter full.
+func TestSize(t *testing.T) {
 	cases := map[int64]string{
-		0:                 "0 B",
-		1023:              "1023 B",
-		1024:              "1 KB",
-		1536:              "1 KB", // integer division, never "1.5 KB"
-		5 * gib:           "5 GB",
-		1 << 50:           "1 PB",
-		3 << 60:           "3072 PB",
-		1<<40 + (1 << 39): "1 TB",
+		0:                  "0 B",
+		1023:               "1023 B",
+		1024:               "1.0 KB",
+		1536:               "1.5 KB",
+		800 << 20:          "800 MB",
+		1023<<20 + 900<<10: "1.0 GB", // would round to "1024 MB"
+		5 * gib:            "5.0 GB",
+		15 * gib:           "15 GB",
+		1<<40 + (1 << 39):  "1.5 TB",
+		1 << 50:            "1.0 PB",
+		3 << 60:            "3072 PB",
 	}
 	for n, want := range cases {
-		if got := fmtBytes(n); got != want {
-			t.Errorf("fmtBytes(%d) = %q, want %q", n, got, want)
+		if got := size(n); got != want {
+			t.Errorf("size(%d) = %q, want %q", n, got, want)
 		}
 	}
 }

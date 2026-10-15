@@ -23,9 +23,12 @@ type Config struct {
 	check.Toggle    `yaml:",inline"`
 	Caution         int `yaml:"caution"`
 	SecurityCaution int `yaml:"security_caution"`
-	// A pending reboot always shows; it alerts once it has waited longer
-	// than this many days. 0 never alerts.
-	RebootCautionDays int `yaml:"reboot_caution_days"`
+	// A pending reboot always shows. It is CAUTION, with an alert, once it
+	// has waited longer than RebootCautionDays, and UNHEALTHY after
+	// RebootUnhealthyDays. 0 turns a step off; with both at 0 it stays INFO,
+	// for hosts that are not rebooted by policy.
+	RebootCautionDays   int `yaml:"reboot_caution_days"`
+	RebootUnhealthyDays int `yaml:"reboot_unhealthy_days"`
 }
 
 type Check struct{}
@@ -34,15 +37,20 @@ func (Check) Meta() check.Meta {
 	return check.Meta{Name: "updates", Title: "Pending Updates", Order: 90}
 }
 
-func (Check) Defaults() check.Config { return &Config{Toggle: check.On, RebootCautionDays: 14} }
+func (Check) Defaults() check.Config {
+	return &Config{Toggle: check.On, RebootCautionDays: 14, RebootUnhealthyDays: 30}
+}
 
 // Validate rejects negative thresholds.
 func (c *Config) Validate() error {
 	if c.Caution < 0 || c.SecurityCaution < 0 {
 		return fmt.Errorf("caution and security_caution must be 0 (off) or positive")
 	}
-	if c.RebootCautionDays < 0 {
-		return fmt.Errorf("reboot_caution_days must be 0 (never alert) or positive")
+	if c.RebootCautionDays < 0 || c.RebootUnhealthyDays < 0 {
+		return fmt.Errorf("reboot_caution_days and reboot_unhealthy_days must be 0 (off) or positive")
+	}
+	if c.RebootCautionDays > 0 && c.RebootUnhealthyDays > 0 && c.RebootCautionDays > c.RebootUnhealthyDays {
+		return fmt.Errorf("reboot_caution_days (%d) is above reboot_unhealthy_days (%d)", c.RebootCautionDays, c.RebootUnhealthyDays)
 	}
 	return nil
 }
