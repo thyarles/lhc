@@ -484,6 +484,22 @@ func TestRoutineHeadlineNeverDeniesNewFindings(t *testing.T) {
 	}
 }
 
+// Under "nothing urgent", new findings below notify_all_on are listed in
+// the CAUTION colour, not as a red "Needs attention".
+func TestRoutineNewFindingsAreNotAnAlarm(t *testing.T) {
+	routine := model("h", &Triage{New: []string{diskMsg}}, diskSections()...)
+	if out := Text(routine); strings.Contains(out, "Needs attention") || !strings.Contains(out, "New since last run") {
+		t.Fatalf("routine text:\n%s", out)
+	}
+	if out := html(t, routine); strings.Contains(out, "Needs attention") || !strings.Contains(out, "New since last run") {
+		t.Fatal("routine html still says Needs attention")
+	}
+	alarm := model("h", &Triage{NotifyAll: true, New: []string{diskMsg}}, diskSections()...)
+	if out := Text(alarm); !strings.Contains(out, "Needs attention — new") {
+		t.Fatalf("alert text:\n%s", out)
+	}
+}
+
 func TestEveryTriageGroupAppearsWhenPopulated(t *testing.T) {
 	tr := &Triage{
 		NotifyAll: true, New: []string{"a new thing"}, Escalated: []string{"a worse thing"},

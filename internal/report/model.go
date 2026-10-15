@@ -163,9 +163,15 @@ type triageGroup struct {
 func (t *Triage) HasNews() bool { return len(t.New)+len(t.Escalated) > 0 }
 
 func (t *Triage) groups() []triageGroup {
+	// Below alerts.notify_all_on the run is routine: a red "Needs attention"
+	// under "nothing urgent" read as an alarm the report itself denied.
+	newLabel, worseLabel, urgency := "Needs attention — new", "Got worse", check.Unhealthy
+	if !t.NotifyAll {
+		newLabel, worseLabel, urgency = "New since last run", "Got worse since last run", check.Caution
+	}
 	all := []triageGroup{
-		{"Needs attention — new", t.New, check.Unhealthy},
-		{"Got worse", t.Escalated, check.Unhealthy},
+		{newLabel, t.New, urgency},
+		{worseLabel, t.Escalated, urgency},
 		{"Still open — reminder", t.Reminders, check.Caution},
 		{"Known, unchanged — no action implied", t.Ongoing, check.Info},
 		{"Cleared since last run", t.Resolved, check.OK},
