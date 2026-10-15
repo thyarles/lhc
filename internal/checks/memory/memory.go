@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -59,8 +60,15 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 
 	// free(1) rather than /proc/meminfo: its idea of "used" is what an admin
 	// sees when they log in and check, and the report must agree with it.
+	availCol := -1
 	for _, line := range strings.Split(env.Runner.Run(ctx, "free", "-b").Stdout, "\n") {
 		p := strings.Fields(line)
+		// The header names the columns. Before procps 3.3.10 the place of
+		// "available" held "cached", so its position alone proves nothing.
+		if i := slices.Index(p, "available"); i >= 0 && p[0] == "total" {
+			availCol = i + 1 // the data rows lead with "Mem:"
+			continue
+		}
 		if len(p) < 3 {
 			continue
 		}
@@ -79,9 +87,17 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 			s.Add(label, "Disabled", check.OK)
 			continue
 		}
-		free := total - used
-		if len(p) > 3 {
-			f, err := strconv.ParseInt(p[3], 10, 64)
+		// For RAM, free(1)'s "available" (procps 3.3.10 and up): its "free"
+		// leaves out the page cache the kernel hands back on demand, and
+		// read "31% · 1014 MB free of 15 GB" on a host with 10 GB to spare.
+		// "avail" is df's word for it, and it fits the text report.
+		free, word := total-used, "free"
+		col := 3
+		if label == "Mem" && availCol > 0 {
+			col, word = availCol, "avail"
+		}
+		if len(p) > col {
+			f, err := strconv.ParseInt(p[col], 10, 64)
 			if err != nil {
 				continue
 			}
@@ -102,7 +118,7 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 			s.Fact("ram", fmt.Sprintf("%.0f%%", pct), st)
 		}
 		s.Add(label,
-			usage(pct, free, total),
+			usage(pct, free, total, word),
 			st, check.Meter(pct), check.Delta(deltaNote(prev, label, pct)))
 	}
 
@@ -114,8 +130,8 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 
 // usage is the value beside the meter. It fits the 78-column text report,
 // where "15.2% used  (279 MB of 1 GB, 1 GB free)" lost its free figure.
-func usage(pct float64, free, total int64) string {
-	return fmt.Sprintf("%.0f%% · %s free of %s", pct, fmtBytes(free), fmtBytes(total))
+func usage(pct float64, free, total int64, word string) string {
+	return fmt.Sprintf("%.0f%% · %s %s of %s", pct, size(free), word, size(total))
 }
 
 // deltaNote is the signed change since the previous run. A percentage on its
@@ -133,23 +149,18 @@ func deltaNote(prev map[string]float64, key string, now float64) string {
 	return fmt.Sprintf("%+.1f pts since last run", diff)
 }
 
-// fmtBytes matches the Python report: integer-divide by 1024 until the value
-// fits, then print it with no decimals ("1 GB", not "1.5 GB").
-func fmtBytes(n int64) string {
-	for _, unit := range []string{"B", "KB", "MB", "GB", "TB"} {
-		if n > -1024 && n < 1024 {
-			return fmt.Sprintf("%d %s", n, unit)
-		}
-		n = floorDiv(n, 1024)
+// size prints n bytes in the largest unit that keeps it under 1024, with
+// one decimal below 10. Whole units read "1 GB free of 1 GB" on a /boot a
+// quarter full. Values that would round to 1024 move up a unit.
+func size(n int64) string {
+	units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
+	f, i := float64(n), 0
+	for i < len(units)-1 && math.Abs(f) >= 1023.5 {
+		f /= 1024
+		i++
 	}
-	return fmt.Sprintf("%d PB", n)
-}
-
-// floorDiv is Python's //, which rounds towards minus infinity.
-func floorDiv(a, b int64) int64 {
-	q := a / b
-	if a%b != 0 && (a < 0) != (b < 0) {
-		q--
+	if i > 0 && math.Abs(f) < 9.95 {
+		return fmt.Sprintf("%.1f %s", f, units[i])
 	}
-	return q
+	return fmt.Sprintf("%.0f %s", f, units[i])
 }

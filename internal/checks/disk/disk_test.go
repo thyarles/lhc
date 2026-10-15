@@ -175,7 +175,7 @@ func TestThresholdsAndAlerts(t *testing.T) {
 // "40.0% used  (4 GB of 10 GB, 6 GB free)" lost its free figure there.
 func TestValueFormat(t *testing.T) {
 	s := newEnv(t, nil, df("/dev/sda1 10485760 4194304 6291456 40% /")).Run(Check{})
-	if v := checktest.Rows(s)["/"].Value; v != "40% · 6 GB free of 10 GB" {
+	if v := checktest.Rows(s)["/"].Value; v != "40% · 6.0 GB free of 10 GB" {
 		t.Fatalf("value %q", v)
 	}
 }
@@ -308,12 +308,20 @@ func TestBlankExtrasAreIgnored(t *testing.T) {
 	}
 }
 
-func TestFmtBytes(t *testing.T) {
-	cases := map[int64]string{0: "0 B", 1023: "1023 B", 1024: "1 KB", 1536: "1 KB", 1 << 40: "1 TB", 1 << 50: "1 PB"}
+func TestSize(t *testing.T) {
+	cases := map[int64]string{0: "0 B", 1023: "1023 B", 1024: "1.0 KB", 1536: "1.5 KB", 800 << 20: "800 MB", 1 << 40: "1.0 TB", 199 << 30: "199 GB"}
 	for n, want := range cases {
-		if got := fmtBytes(n); got != want {
-			t.Errorf("fmtBytes(%d) = %q, want %q", n, got, want)
+		if got := size(n); got != want {
+			t.Errorf("size(%d) = %q, want %q", n, got, want)
 		}
+	}
+}
+
+// RHEL 10 on UEFI listed /sys/firmware/efi/efivars as a disk.
+func TestEfivarsIsNotADisk(t *testing.T) {
+	s := newEnv(t, nil, df("/dev/sda1 10485760 4194304 6291456 40% /", "efivarfs 256 59 193 24% /sys/firmware/efi/efivars")).Run(Check{})
+	if _, ok := checktest.Rows(s)["/sys/firmware/efi/efivars"]; ok {
+		t.Fatal("efivarfs listed")
 	}
 }
 
