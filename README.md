@@ -153,7 +153,12 @@ the fingerprints it has already notified about:
 | condition cleared | mentioned once | — |
 
 A condition is only recorded as notified after the relay **accepted** the
-mail. If the relay is down, the next run treats it as new and tries again.
+mail, and the baselines (ports, SUID files, packages, crontabs) move only
+then too. If the relay is down, the next run compares against the last
+delivered run, finds the same changes and tries again. A relay that answers
+"try again later" (a 4xx reply) gets one more attempt a minute later.
+An interrupted run (Ctrl+C, or the service stopped mid-run) prints, sends
+and saves nothing.
 
 ## Files
 

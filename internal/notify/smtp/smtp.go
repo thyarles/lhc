@@ -40,6 +40,10 @@ type Config struct {
 type Sender struct {
 	Config
 	Now func() time.Time
+	// Retry, when positive, is the wait before one more attempt after a
+	// temporary (4xx) refusal. OnRetry, if set, hears about it first.
+	Retry   time.Duration
+	OnRetry func(err error, wait time.Duration)
 }
 
 var _ notify.Notifier = (*Sender)(nil)
@@ -47,6 +51,31 @@ var _ notify.Notifier = (*Sender)(nil)
 // Send delivers m. A nil error means the relay accepted the message for
 // every recipient.
 func (s *Sender) Send(ctx context.Context, m notify.Message) error {
+	err := s.send(ctx, m)
+	if err == nil || s.Retry <= 0 || !Temporary(err) {
+		return err
+	}
+	if s.OnRetry != nil {
+		s.OnRetry(err, s.Retry)
+	}
+	t := time.NewTimer(s.Retry)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return err
+	case <-t.C:
+	}
+	return s.send(ctx, m)
+}
+
+// Temporary reports a 4xx reply: the relay asks to be tried again later
+// (greylisting, a full queue, too many connections).
+func Temporary(err error) bool {
+	var te *textproto.Error
+	return errors.As(err, &te) && te.Code >= 400 && te.Code < 500
+}
+
+func (s *Sender) send(ctx context.Context, m notify.Message) error {
 	if len(m.To) == 0 {
 		return errors.New("no recipients")
 	}

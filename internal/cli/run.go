@@ -212,6 +212,10 @@ func (a *app) pass(ctx context.Context, o runOpts) error {
 		return commit(decision, states)
 	}
 	sender := a.sender(h)
+	sender.Retry = mailRetry
+	sender.OnRetry = func(err error, wait time.Duration) {
+		say("  ! Relay refused for now (%v) — retrying in %s", err, wait)
+	}
 	msg := notify.Message{
 		From: a.fromAddress(h), To: to, Subject: subject, Text: text, HTML: html, HTMLMode: a.cfg.Email.HTMLMode,
 	}
@@ -229,6 +233,11 @@ func (a *app) pass(ctx context.Context, o runOpts) error {
 
 // errInterrupted ends a pass cut short by a signal.
 var errInterrupted = errors.New("interrupted: no report printed, nothing sent or saved")
+
+// mailRetry is how long a scheduled run waits before its one retry when the
+// relay answers 4xx ("try again later"). An Exchange relay with a full queue
+// disk answered 452 and accepted the same message a minute later.
+const mailRetry = time.Minute
 
 // commit records the alert history and the baselines together.
 func commit(d *alerts.Decision, states *state.Dir) error {

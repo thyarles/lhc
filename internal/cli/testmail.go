@@ -71,6 +71,10 @@ func (a *app) testMail(ctx context.Context, to []string) error {
 	a.printf("  Sending a test message through %s as %s", relay, from)
 	if err := a.sender(h).Send(ctx, msg); err != nil {
 		a.printf("  ✗ Test message failed (%s) → %v", relay, err)
+		if smtp.Temporary(err) {
+			// No retry here: someone is waiting at the terminal.
+			a.printf("  The relay says this is temporary; try again in a minute.")
+		}
 		return &exitError{code: 2, err: fmt.Errorf("delivery failed: %w", err)}
 	}
 	a.printf("  ✓ Test message accepted by %s → %s", relay, strings.Join(to, ", "))

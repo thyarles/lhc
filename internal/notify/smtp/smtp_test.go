@@ -94,6 +94,46 @@ func TestRejectedMessageIsAnError(t *testing.T) {
 	}
 }
 
+// An Exchange relay with a full queue disk answered 452 and accepted the same
+// message a minute later.
+func TestATemporaryRefusalIsRetriedOnce(t *testing.T) {
+	s := server(t, func(s *smtptest.Server) { s.TempFailData = 1 })
+	snd := sender(s, "none")
+	snd.Retry = 10 * time.Millisecond
+	var heard error
+	snd.OnRetry = func(err error, _ time.Duration) { heard = err }
+	if err := snd.Send(context.Background(), msg("inline")); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Messages()) != 1 || !Temporary(heard) {
+		t.Fatalf("messages %d, OnRetry heard %v", len(s.Messages()), heard)
+	}
+
+	s = server(t, func(s *smtptest.Server) { s.TempFailData = 2 })
+	snd = sender(s, "none")
+	snd.Retry = 10 * time.Millisecond
+	if err := snd.Send(context.Background(), msg("inline")); !Temporary(err) {
+		t.Fatalf("two refusals: err %v, want the 452", err)
+	}
+}
+
+func TestAPermanentRefusalIsNotRetried(t *testing.T) {
+	s := server(t, func(s *smtptest.Server) { s.RejectData = true })
+	snd := sender(s, "none")
+	snd.Retry = time.Hour
+	snd.OnRetry = func(error, time.Duration) { t.Error("retried a 554") }
+	if err := snd.Send(context.Background(), msg("inline")); err == nil || Temporary(err) {
+		t.Fatalf("err %v, want a permanent refusal", err)
+	}
+}
+
+func TestNoRetryWithoutRetry(t *testing.T) {
+	s := server(t, func(s *smtptest.Server) { s.TempFailData = 1 })
+	if err := sender(s, "none").Send(context.Background(), msg("inline")); !Temporary(err) {
+		t.Fatalf("err %v, want the 452 straight away", err)
+	}
+}
+
 func TestRejectedRecipientIsAnError(t *testing.T) {
 	s := server(t, func(s *smtptest.Server) { s.RejectRcpt = true })
 	if err := sender(s, "none").Send(context.Background(), msg("inline")); err == nil {

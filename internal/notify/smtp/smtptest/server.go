@@ -37,6 +37,7 @@ type Server struct {
 	AuthMechs     string // e.g. "PLAIN LOGIN"; empty = no AUTH offered
 	RejectData    bool   // answer 554 after DATA
 	RejectRcpt    bool   // answer 550 to RCPT
+	TempFailData  int    // answer 452 after the first N DATA
 
 	ln     net.Listener
 	tlsCfg *tls.Config
@@ -191,6 +192,17 @@ func (s *Server) handle(conn net.Conn) {
 			}
 			if s.RejectData {
 				say("554 rejected")
+				cur = Message{}
+				continue
+			}
+			s.mu.Lock()
+			temp := s.TempFailData > 0
+			if temp {
+				s.TempFailData--
+			}
+			s.mu.Unlock()
+			if temp {
+				say("452 4.3.1 Insufficient system resources")
 				cur = Message{}
 				continue
 			}
