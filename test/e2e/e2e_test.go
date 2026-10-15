@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/thyarles/lhc/internal/config"
 	"github.com/thyarles/lhc/internal/notify/smtp/smtptest"
@@ -101,14 +102,19 @@ func newHost(t *testing.T, relay *smtptest.Server) *host {
 	return h
 }
 
-func (h *host) run(want int, args ...string) {
-	h.t.Helper()
+func (h *host) command(args ...string) (*exec.Cmd, *bytes.Buffer, *bytes.Buffer) {
 	cmd := exec.Command(binary, append(args, "--config", h.cfg)...)
 	cmd.Env = append(os.Environ(),
 		"LHC_PATH_OVERRIDE="+filepath.Join(h.dir, "bin"),
 		"HOME="+h.dir, "KUBECONFIG=")
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
+	return cmd, &out, &errb
+}
+
+func (h *host) run(want int, args ...string) {
+	h.t.Helper()
+	cmd, out, errb := h.command(args...)
 	err := cmd.Run()
 	h.stdout, h.stderr = out.String(), errb.String()
 	got := 0
@@ -121,6 +127,13 @@ func (h *host) run(want int, args ...string) {
 	if got != want {
 		h.t.Fatalf("lhc %s: exit %d, want %d\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), got, want, h.stdout, h.stderr)
 	}
+}
+
+// stateFiles are the baselines and the alert history, without the run lock
+// and the saved reports that share the directory.
+func (h *host) stateFiles() []string {
+	files, _ := filepath.Glob(filepath.Join(h.state, "*.json"))
+	return files
 }
 
 func (h *host) alertsState() []byte {
@@ -208,6 +221,68 @@ func TestAFailedDeliveryLeavesTheAlertUnacknowledged(t *testing.T) {
 	}
 	if !strings.Contains(h.stderr+readFile(t, filepath.Join(h.dir, "lhc.log")), "will retry next run") {
 		t.Fatalf("no retry notice:\n%s", h.stderr)
+	}
+}
+
+// A refused delivery moves no baseline either: the next run must find the
+// same changes and report them, not diff against a state nobody was told of.
+func TestAFailedDeliveryWritesNoState(t *testing.T) {
+	r := relay(t, func(s *smtptest.Server) { s.RejectData = true })
+	h := newHost(t, r)
+	h.run(2, "run")
+	if files := h.stateFiles(); len(files) > 0 {
+		t.Fatalf("a refused delivery wrote state: %v", files)
+	}
+}
+
+// Ctrl+C four seconds into `lhc report` on a real host printed a report of
+// half-finished checks: "0 listening sockets", "nobody logged in". From
+// `lhc run`, that report would have been mailed and its baselines saved.
+func TestAnInterruptedRunReportsNothingAndSavesNothing(t *testing.T) {
+	for _, args := range [][]string{{"run"}, {"report"}} {
+		t.Run(args[0], func(t *testing.T) {
+			r := relay(t)
+			h := newHost(t, r)
+			started := filepath.Join(h.dir, "df-started")
+			if err := os.WriteFile(filepath.Join(h.dir, "bin", "df"),
+				[]byte("#!/bin/sh\ntouch "+started+"\nsleep 10\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			cmd, out, errb := h.command(args...)
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; ; i++ {
+				if _, err := os.Stat(started); err == nil {
+					break
+				}
+				if i == 100 {
+					_ = cmd.Process.Kill()
+					t.Fatal("the slow df never started")
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			if err := cmd.Process.Signal(os.Interrupt); err != nil {
+				t.Fatal(err)
+			}
+			err := cmd.Wait()
+			var ee *exec.ExitError
+			if !errors.As(err, &ee) || ee.ExitCode() != 130 {
+				t.Fatalf("exit %v, want 130\nstderr:\n%s", err, errb)
+			}
+			if !strings.Contains(errb.String(), "interrupted: no report printed, nothing sent or saved") {
+				t.Fatalf("stderr:\n%s", errb)
+			}
+			if out.Len() > 0 {
+				t.Fatalf("printed a report of half-finished checks:\n%s", out)
+			}
+			if len(r.Messages()) != 0 {
+				t.Fatal("mailed a report of half-finished checks")
+			}
+			if files := h.stateFiles(); len(files) > 0 {
+				t.Fatalf("wrote state: %v", files)
+			}
+		})
 	}
 }
 

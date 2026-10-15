@@ -668,8 +668,8 @@ func goldenModel() *Model {
 	sys.Add("Kernel", "5.14.0-427.el9.x86_64", check.OK)
 	sys.Fact("uptime", "132 days", check.OK)
 	disk := check.NewSection("disk", "Disk Usage")
-	disk.Add("/", "41.0% used  (8 GB of 20 GB, 11 GB free)", check.OK, check.Meter(41))
-	disk.Add("/var", "91.0% used  (91 GB of 100 GB, 8 GB free)", check.Caution, check.Meter(91),
+	disk.Add("/", "41% · 11 GB free of 20 GB", check.OK, check.Meter(41))
+	disk.Add("/var", "91% · 8 GB free of 100 GB", check.Caution, check.Meter(91),
 		check.Delta("+3.0 pts since last run"))
 	disk.Alert(check.Caution, "Disk /var at 91%")
 	disk.Fact("disk_max", "91% /var", check.Caution)

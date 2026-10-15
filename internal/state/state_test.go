@@ -76,6 +76,54 @@ func TestReadOnlyNeverWrites(t *testing.T) {
 	}
 }
 
+// A failed delivery must not consume a change: the baseline stays on disk as
+// the last delivered run left it until Flush.
+func TestDeferredSavesWaitForFlush(t *testing.T) {
+	dir := t.TempDir()
+	if err := (&Dir{Path: dir}).For("ports").Save("kept", "old"); err != nil {
+		t.Fatal(err)
+	}
+	d := &Dir{Path: dir, Deferred: true}
+	ports, alerts := d.For("ports"), d.For("alerts")
+	if err := ports.Save("current", []string{"tcp *:22"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := alerts.Save("conditions", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "alerts.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("a deferred save wrote a file before Flush")
+	}
+	var got []string
+	if !ports.Load("current", &got) || len(got) != 1 {
+		t.Fatalf("a deferred save is invisible to Load: %v", got)
+	}
+
+	if err := d.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	fresh := (&Dir{Path: dir}).For("ports")
+	var kept string
+	if !fresh.Load("current", &got) || !fresh.Load("kept", &kept) || kept != "old" {
+		t.Fatalf("after Flush: current %v, kept %q", got, kept)
+	}
+	var n int
+	if !(&Dir{Path: dir}).For("alerts").Load("conditions", &n) || n != 1 {
+		t.Fatal("Flush did not write every owner")
+	}
+}
+
+func TestDeferredWithoutFlushWritesNothing(t *testing.T) {
+	dir := t.TempDir()
+	d := &Dir{Path: dir, Deferred: true}
+	if err := d.For("ports").Save("current", []string{"x"}); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("wrote %v without Flush", entries)
+	}
+}
+
 func TestFilesArePrivate(t *testing.T) {
 	dir := t.TempDir()
 	if err := (&Dir{Path: dir}).For("alerts").Save("conditions", 1); err != nil {

@@ -15,8 +15,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 )
@@ -47,9 +49,16 @@ type Dir struct {
 	// --dry-run` set it so that previewing a report does not consume the
 	// baselines the scheduled run diffs against.
 	ReadOnly bool
+	// Deferred holds every Save in memory until Flush. A delivering run sets
+	// it so that the baselines advance together with the alert history, only
+	// once the report reached someone. Writing them as each check finished
+	// let a failed delivery, or an interrupted run, consume a change that
+	// nobody was ever told about.
+	Deferred bool
 	Now      func() time.Time
 
-	mu sync.Mutex
+	mu      sync.Mutex
+	pending map[string]map[string]json.RawMessage // owner → key → value
 }
 
 // For returns the Store for one owner, e.g. a check's name.
@@ -74,7 +83,10 @@ func (f *fileStore) read() envelope {
 func (f *fileStore) Load(key string, out any) bool {
 	f.dir.mu.Lock()
 	defer f.dir.mu.Unlock()
-	raw, ok := f.read().Data[key]
+	raw, ok := f.dir.pending[f.owner][key]
+	if !ok {
+		raw, ok = f.read().Data[key]
+	}
 	if !ok {
 		return false
 	}
@@ -91,8 +103,23 @@ func (f *fileStore) Save(key string, v any) error {
 	if err != nil {
 		return fmt.Errorf("state %s/%s: %w", f.owner, key, err)
 	}
+	if f.dir.Deferred {
+		if f.dir.pending == nil {
+			f.dir.pending = map[string]map[string]json.RawMessage{}
+		}
+		if f.dir.pending[f.owner] == nil {
+			f.dir.pending[f.owner] = map[string]json.RawMessage{}
+		}
+		f.dir.pending[f.owner][key] = raw
+		return nil
+	}
+	return f.write(map[string]json.RawMessage{key: raw})
+}
+
+// write merges data into the owner's file. The caller holds dir.mu.
+func (f *fileStore) write(data map[string]json.RawMessage) error {
 	env := f.read()
-	env.Data[key] = raw
+	maps.Copy(env.Data, data)
 	now := time.Now
 	if f.dir.Now != nil {
 		now = f.dir.Now
@@ -106,6 +133,21 @@ func (f *fileStore) Save(key string, v any) error {
 		return err
 	}
 	return WriteFileAtomic(f.file(), append(b, '\n'), 0o600)
+}
+
+// Flush writes what a Deferred Dir has held back, one file per owner, and
+// forgets it. Every owner is attempted; the first error is returned.
+func (d *Dir) Flush() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	var first error
+	for _, owner := range slices.Sorted(maps.Keys(d.pending)) {
+		if err := (&fileStore{dir: d, owner: owner}).write(d.pending[owner]); err != nil && first == nil {
+			first = fmt.Errorf("state %s: %w", owner, err)
+		}
+	}
+	d.pending = nil
+	return first
 }
 
 // WriteFileAtomic writes through a temporary file in the same directory,

@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 func init() { check.Register(Check{}) }
@@ -145,12 +146,77 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	case z > 0:
 		st = check.Info
 	}
-	s.Add("Zombie Processes", strconv.Itoa(z), st,
-		check.Detail(fmt.Sprintf("Thresholds: caution ≥ %d, unhealthy ≥ %d", cfg.ZombieCaution, cfg.ZombieUnhealthy)))
-	if st.Flagged() {
-		s.Alert(st, fmt.Sprintf("%d zombie processes", z))
+	thresholds := fmt.Sprintf("Thresholds: caution ≥ %d, unhealthy ≥ %d", cfg.ZombieCaution, cfg.ZombieUnhealthy)
+	if !st.Flagged() {
+		s.Add("Zombie Processes", strconv.Itoa(z), st, check.Detail(thresholds))
+		return s
 	}
+	// A count alone left a reader asking whether only a reboot clears them.
+	// It never does: a zombie goes as soon as its parent exits, so name the
+	// parents, and say so.
+	parents := zombieParents(ctx, env.Runner)
+	advice := "Restarting the parent clears them; no reboot needed."
+	if slices.ContainsFunc(parents, func(p parent) bool { return p.containerInit }) {
+		advice = "Restarting the parent's container clears them; no reboot needed. " +
+			"A container's PID 1 must reap orphans: run it under tini, or set shareProcessNamespace: true."
+	}
+	s.Add("Zombie Processes", strconv.Itoa(z), st, check.Detail(advice+" "+thresholds))
+	for _, p := range parents[:min(3, len(parents))] {
+		what := p.comm
+		if p.containerInit {
+			what += " (container PID 1)"
+		}
+		s.Add("Parent PID "+p.pid, fmt.Sprintf("%d · %s", p.zombies, what), check.Info)
+	}
+	s.Alert(st, fmt.Sprintf("%d zombie processes", z))
 	return s
+}
+
+// parent is a process holding zombies.
+type parent struct {
+	pid           string
+	comm          string
+	zombies       int
+	containerInit bool
+}
+
+// zombieParents groups the zombies by parent, most first.
+func zombieParents(ctx context.Context, r runner.Runner) []parent {
+	count := map[string]int{}
+	for _, line := range strings.Split(r.Run(ctx, "ps", "-e", "-o", "ppid=,stat=").Stdout, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 2 && strings.HasPrefix(f[1], "Z") {
+			count[f[0]]++
+		}
+	}
+	var out []parent
+	for pid, n := range count {
+		p := parent{pid: pid, zombies: n, comm: "?"}
+		if b, err := r.ReadFile("/proc/" + pid + "/comm"); err == nil {
+			p.comm = strings.TrimSpace(string(b))
+		}
+		if b, err := r.ReadFile("/proc/" + pid + "/status"); err == nil {
+			p.containerInit = nsInit(string(b))
+		}
+		out = append(out, p)
+	}
+	slices.SortFunc(out, func(a, b parent) int {
+		return cmp.Or(cmp.Compare(b.zombies, a.zombies), cmp.Compare(a.pid, b.pid))
+	})
+	return out
+}
+
+// nsInit reports a process that is PID 1 of a nested PID namespace: its
+// NSpid line ("NSpid:\t3333254\t1") ends in 1. Kernels before 4.1 have no
+// NSpid, and the host's own init has a single field.
+func nsInit(status string) bool {
+	for _, line := range strings.Split(status, "\n") {
+		if rest, ok := strings.CutPrefix(line, "NSpid:"); ok {
+			f := strings.Fields(rest)
+			return len(f) > 1 && f[len(f)-1] == "1"
+		}
+	}
+	return false
 }
 
 func reason(stderr string, err error) string {

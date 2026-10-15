@@ -58,7 +58,7 @@ func TestZombieThresholdsComeFromTheConfig(t *testing.T) {
 	e := checktest.NewEnv(t, Check{}, cfg)
 	e.Fake.Expect("ps aux", withZombies(2))
 	row := checktest.Rows(e.Run(Check{}))["Zombie Processes"]
-	if row.Status != check.Caution || row.Detail != "Thresholds: caution ≥ 2, unhealthy ≥ 3" {
+	if row.Status != check.Caution || !strings.HasSuffix(row.Detail, "Thresholds: caution ≥ 2, unhealthy ≥ 3") {
 		t.Fatalf("row %+v", row)
 	}
 }
@@ -167,5 +167,61 @@ func TestValidate(t *testing.T) {
 	c.ZombieCaution = 60
 	if c.Validate() == nil {
 		t.Fatal("zombie_caution above zombie_unhealthy accepted")
+	}
+}
+
+// An rke2 worker had 1153 zombies, nearly all left by a Go service running
+// as its container's PID 1. The count alone left the reader asking whether
+// only a reboot would clear them.
+func TestZombieParentsAndTheRemedyAreNamed(t *testing.T) {
+	e := checktest.NewEnv(t, Check{}, nil)
+	e.Fake.Expect("ps aux", withZombies(60))
+	e.Fake.Expect("ps -e -o ppid=,stat=", strings.Repeat("3333254 Zs\n", 55)+strings.Repeat("880 Z\n", 5)+"1 Ss\n3333254 S\n")
+	e.Fake.File("/proc/3333254/comm", "consumer\n")
+	e.Fake.File("/proc/3333254/status", "Name:\tconsumer\nNSpid:\t3333254\t1\n")
+	e.Fake.File("/proc/880/comm", "bash\n")
+	e.Fake.File("/proc/880/status", "Name:\tbash\nNSpid:\t880\n")
+	s := e.Run(Check{})
+
+	rows := checktest.Rows(s)
+	z := rows["Zombie Processes"]
+	if z.Value != "60" || z.Status != check.Unhealthy ||
+		!strings.Contains(z.Detail, "Restarting the parent's container clears them; no reboot needed.") ||
+		!strings.Contains(z.Detail, "tini") {
+		t.Fatalf("zombie row %+v", z)
+	}
+	if got := rows["Parent PID 3333254"].Value; got != "55 · consumer (container PID 1)" {
+		t.Fatalf("first parent %q", got)
+	}
+	if got := rows["Parent PID 880"].Value; got != "5 · bash" {
+		t.Fatalf("second parent %q", got)
+	}
+	// The alert's text is its identity in the alert history: unchanged.
+	if got := s.AlertMsgs(); !slices.Equal(got, []string{"60 zombie processes"}) {
+		t.Fatalf("alerts %q", got)
+	}
+}
+
+func TestZombiesOnTheHostNeedNoContainerAdvice(t *testing.T) {
+	e := checktest.NewEnv(t, Check{}, nil)
+	e.Fake.Expect("ps aux", withZombies(12))
+	e.Fake.Expect("ps -e -o ppid=,stat=", strings.Repeat("4242 Z\n", 12))
+	e.Fake.File("/proc/4242/comm", "cron\n")
+	s := e.Run(Check{})
+	z := checktest.Rows(s)["Zombie Processes"]
+	if !strings.Contains(z.Detail, "Restarting the parent clears them; no reboot needed.") || strings.Contains(z.Detail, "tini") {
+		t.Fatalf("zombie row %+v", z)
+	}
+	if got := checktest.Rows(s)["Parent PID 4242"].Value; got != "12 · cron" {
+		t.Fatalf("parent %q", got)
+	}
+}
+
+func TestAFewZombiesDoNotLookForParents(t *testing.T) {
+	e := checktest.NewEnv(t, Check{}, nil)
+	e.Fake.Expect("ps aux", withZombies(3))
+	e.Run(Check{})
+	if slices.ContainsFunc(e.Fake.Calls(), func(c string) bool { return strings.Contains(c, "ppid=") }) {
+		t.Fatal("looked up parents for zombies below the caution threshold")
 	}
 }

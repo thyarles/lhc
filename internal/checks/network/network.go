@@ -54,13 +54,35 @@ func parseNetDev(b []byte) []iface {
 	return out
 }
 
+// perContainer matches the links a container runtime or CNI creates for
+// each pod or container. A Kubernetes worker listed 32 cali* rows. The
+// links a host has one of (vxlan.calico, flannel.1, cni0, tunl0, docker0)
+// stay listed: they carry the traffic between nodes.
+func perContainer(name string) bool {
+	for _, p := range []string{"cali", "veth", "lxc"} {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	s := check.NewSection("network", c.Meta().Title)
 	r := env.Runner
 
 	if b, err := r.ReadFile("/proc/net/dev"); err == nil {
+		hidden := 0
 		for _, i := range parseNetDev(b) {
+			if perContainer(i.name) {
+				hidden++
+				continue
+			}
 			s.Add(i.name, fmt.Sprintf("RX %s  TX %s", fmtBytes(i.rx), fmtBytes(i.tx)), check.Info)
+		}
+		if hidden > 0 {
+			s.Add("Container Interfaces", fmt.Sprintf("%d hidden", hidden), check.Info,
+				check.Detail("one per pod or container: cali*, veth*, lxc*"))
 		}
 	}
 

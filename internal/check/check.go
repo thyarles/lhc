@@ -120,9 +120,15 @@ const PerCheckTimeout = 10 * time.Minute
 // Sequential on purpose: running them in parallel would produce exactly the
 // CPU spike the CPU check then reports. base supplies the Runner, logger,
 // clock and host; each check gets its own State and Config.
+//
+// An interrupt stops it before the next check: the result is then partial
+// and the caller must not report it.
 func RunAll(ctx context.Context, checks []Check, cfgs map[string]Config, states *state.Dir, base Env) Result {
 	var res Result
 	for _, c := range checks {
+		if ctx.Err() != nil {
+			break
+		}
 		info := c.Meta()
 		cfg, ok := cfgs[info.Name]
 		if !ok {

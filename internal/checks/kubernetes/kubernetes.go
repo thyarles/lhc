@@ -176,6 +176,14 @@ func moreSuffix(n int) string {
 
 func firstN[T any](xs []T, n int) []T { return xs[:min(n, len(xs))] }
 
+// kubeletRuns reports a kubelet process, as rke2 and kubeadm workers run.
+// k3s embeds its kubelet in the k3s process, so a k3s agent stays "not a
+// Kubernetes node".
+func kubeletRuns(ctx context.Context, r runner.Runner) bool {
+	res := r.Run(ctx, "pgrep", "-x", "kubelet")
+	return res.OK() && strings.TrimSpace(res.Stdout) != ""
+}
+
 func save(env *check.Env, key string, v any) {
 	if err := env.State.Save(key, v); err != nil {
 		env.Log.Warn("saving state", "key", key, "err", err)
@@ -193,11 +201,17 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	// A kubectl with nothing to talk to says nothing worth printing, and a
 	// host that will never run Kubernetes must not be told to install it.
 	switch {
+	case kcfg == "" && kubeletRuns(ctx, env.Runner):
+		// A worker has no cluster credentials, so the cluster checks run
+		// on a control-plane node. "Not present" read as wrong on a host
+		// running dozens of pods.
+		s.Add("Node Role", "Worker node (no kubeconfig here)", check.Info)
+		return s
 	case kubectl == "" && kcfg == "":
 		s.NotApplicable("Not a Kubernetes node")
 		return s
 	case kcfg == "":
-		s.NotApplicable("kubectl present but no readable kubeconfig (agent node or client-only host)")
+		s.NotApplicable("kubectl present but no readable kubeconfig (client-only host)")
 		return s
 	case kubectl == "":
 		s.Add("kubectl", fmt.Sprintf("kubeconfig at %s but kubectl is not installed", kcfg), check.Info)

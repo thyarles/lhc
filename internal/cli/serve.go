@@ -108,7 +108,7 @@ func (a *app) serveOnce(ctx context.Context) {
 		}
 	}()
 	err := a.pass(ctx, runOpts{deliver: true, noRandom: true})
-	if err != nil && !errors.Is(err, context.Canceled) {
+	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, errInterrupted) {
 		_, _ = fmt.Fprintf(a.stderr, "lhc serve: run failed: %v\n", err)
 	}
 }

@@ -279,7 +279,7 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 		}
 		current[r.path] = math.Round(r.pct*10) / 10
 		s.Add(r.path,
-			fmt.Sprintf("%.1f%% used  (%s of %s, %s free)", r.pct, fmtBytes(r.used), fmtBytes(r.size), fmtBytes(r.avail)),
+			fmt.Sprintf("%.0f%% · %s free of %s", r.pct, fmtBytes(r.avail), fmtBytes(r.size)),
 			st, check.Meter(r.pct), check.Delta(deltaNote(prev, r.path, r.pct)))
 	}
 	if fullest >= 0 {

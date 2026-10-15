@@ -72,6 +72,29 @@ func TestInterfacesSkipLoopback(t *testing.T) {
 	checktest.NoAlerts(t, s)
 }
 
+// An rke2 worker listed 32 cali* rows. The per-pod links collapse into one
+// count; the overlay that carries traffic between nodes stays.
+func TestPerPodInterfacesAreCounted(t *testing.T) {
+	e := checktest.NewEnv(t, Check{}, nil)
+	e.Fake.File("/proc/net/dev", `Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+  ens192: 1073741824  2000    0    0    0     0          0         0 5242880    1500    0    0    0     0       0          0
+cali667b997ae36: 2048  10    0    0    0     0          0         0     512       5    0    0    0     0       0          0
+vxlan.calico: 4096     10    0    0    0     0          0         0    1024       5    0    0    0     0       0          0
+cali04f588a349a: 2048  10    0    0    0     0          0         0     512       5    0    0    0     0       0          0
+veth1a2b3c4: 2048      10    0    0    0     0          0         0     512       5    0    0    0     0       0          0
+lxc_health: 2048       10    0    0    0     0          0         0     512       5    0    0    0     0       0          0
+`)
+	s := e.Run(Check{})
+	if got := checktest.Labels(s); !slices.Equal(got, []string{"ens192", "vxlan.calico", "Container Interfaces"}) {
+		t.Fatalf("labels %v", got)
+	}
+	if row := checktest.Rows(s)["Container Interfaces"]; row.Value != "4 hidden" || row.Status != check.Info {
+		t.Fatalf("row %+v", row)
+	}
+	checktest.NoAlerts(t, s)
+}
+
 func TestCounterGluedToTheNameStillParses(t *testing.T) {
 	got := parseNetDev([]byte("h1\nh2\n  eth1:123456789 1 0 0 0 0 0 0 4096 1 0 0 0 0 0 0\n"))
 	if len(got) != 1 || got[0] != (iface{"eth1", 123456789, 4096}) {

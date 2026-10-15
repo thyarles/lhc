@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 func init() { check.Register(Check{}) }
@@ -38,16 +39,31 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	r := env.Runner
 
 	var raw []string
+	var tool string
+	var tcp, udp runner.Result
 	switch {
 	case has(r, "ss"):
-		raw = append(parseSS("tcp", r.Run(ctx, "ss", "-tlnp").Stdout), parseSS("udp", r.Run(ctx, "ss", "-ulnp").Stdout)...)
+		tool = "ss"
+		tcp, udp = r.Run(ctx, "ss", "-tlnp"), r.Run(ctx, "ss", "-ulnp")
+		raw = append(parseSS("tcp", tcp.Stdout), parseSS("udp", udp.Stdout)...)
 	case has(r, "netstat"):
-		raw = append(parseNetstat("tcp", r.Run(ctx, "netstat", "-tlnp").Stdout), parseNetstat("udp", r.Run(ctx, "netstat", "-ulnp").Stdout)...)
+		tool = "netstat"
+		tcp, udp = r.Run(ctx, "netstat", "-tlnp"), r.Run(ctx, "netstat", "-ulnp")
+		raw = append(parseNetstat("tcp", tcp.Stdout), parseNetstat("udp", udp.Stdout)...)
 		s.NeedTool(ssTool(true))
 	default:
 		s.Add("ss / netstat", "Neither available", check.Info)
 		s.NeedTool(ssTool(false))
 		return s
+	}
+	// A failed listing reads as "nothing listens". Saved as the baseline, it
+	// would flag every real port as new on the next run.
+	for _, res := range []runner.Result{tcp, udp} {
+		if !res.OK() {
+			s.Add("Listening Sockets", "Could not be listed", check.Caution,
+				check.Detail(fmt.Sprintf("%s failed: %s; baseline kept", tool, why(res))))
+			return s
+		}
 	}
 
 	// The raw line carries pid= and fd=, which change every time a service
@@ -240,4 +256,15 @@ func diff(prev, cur []string) (added, gone []string) {
 		}
 	}
 	return added, gone
+}
+
+// why is a failed command's reason in a few words.
+func why(res runner.Result) string {
+	if line, _, _ := strings.Cut(res.Stderr, "\n"); line != "" {
+		return line
+	}
+	if res.Err != nil {
+		return res.Err.Error()
+	}
+	return fmt.Sprintf("exit status %d", res.Code)
 }
