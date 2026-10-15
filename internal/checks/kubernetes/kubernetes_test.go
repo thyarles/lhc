@@ -155,12 +155,28 @@ func TestNoKubectlAndNoKubeconfigIsSilent(t *testing.T) {
 }
 
 func TestKubectlWithoutAKubeconfigIsSilent(t *testing.T) {
-	// An agent node: kubectl exists, there is no cluster to ask. Permanent.
+	// A client-only host: kubectl exists, there is no cluster to ask.
 	e := newEnv(t)
 	e.Fake.Tool("kubectl")
 	s := e.Run(Check{})
 	if s.Applicable {
 		t.Fatal("section applicable without a kubeconfig")
+	}
+	checktest.NoAlerts(t, s)
+}
+
+// An rke2 worker read "Kubernetes: not present on this host" while running
+// dozens of pods.
+func TestAWorkerNodeSaysSo(t *testing.T) {
+	e := newEnv(t)
+	e.Fake.Tool(rke2Kubectl)
+	e.Fake.Expect("pgrep -x kubelet", "3477421")
+	s := e.Run(Check{})
+	if !s.Applicable {
+		t.Fatal("a worker node reads as not a Kubernetes node")
+	}
+	if row := checktest.Rows(s)["Node Role"]; row.Value != "Worker node (no kubeconfig here)" || row.Status != check.Info {
+		t.Fatalf("row %+v", row)
 	}
 	checktest.NoAlerts(t, s)
 }

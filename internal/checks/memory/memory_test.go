@@ -27,7 +27,7 @@ func TestRowsAndValueFormat(t *testing.T) {
 		t.Fatalf("labels: %v", got)
 	}
 	mem := checktest.Rows(s)["Mem"]
-	if mem.Value != "25.0% used  (4 GB of 16 GB, 12 GB free)" || mem.Status != check.OK {
+	if mem.Value != "25% · 12 GB free of 16 GB" || mem.Status != check.OK {
 		t.Fatalf("Mem row: %+v", mem)
 	}
 	if mem.Meter == nil || *mem.Meter != 25 {
@@ -77,12 +77,19 @@ func TestFullSwapIsFlaggedButNeverAlerts(t *testing.T) {
 	checktest.NoAlerts(t, s)
 }
 
-func TestNoSwapIsZeroPercent(t *testing.T) {
+// Kubernetes nodes run without swap on purpose: "Disabled", not an idle 0%.
+func TestNoSwapIsDisabled(t *testing.T) {
 	e := checktest.NewEnv(t, Check{}, nil)
 	e.Fake.Expect("free -b", free(4*gib, 0, 0))
 	row := checktest.Rows(e.Run(Check{}))["Swap"]
-	if row.Value != "0.0% used  (0 B of 0 B, 0 B free)" || row.Status != check.OK {
+	if row.Value != "Disabled" || row.Status != check.OK || row.Meter != nil {
 		t.Fatalf("Swap row: %+v", row)
+	}
+	var saved map[string]float64
+	if e.Loaded(t, stateKey, &saved) {
+		if _, ok := saved["Swap"]; ok {
+			t.Fatalf("disabled swap saved a percentage: %v", saved)
+		}
 	}
 }
 

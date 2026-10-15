@@ -107,7 +107,7 @@ func TestOSName(t *testing.T) {
 		{"RHEL 7 with an edited PRETTY_NAME", `NAME="Red Hat Enterprise Linux Server"
 VERSION="7.9 (Maipo)"
 VERSION_ID="7.9"
-PRETTY_NAME=JBoss`, "Red Hat Enterprise Linux Server 7.9 (Maipo)"},
+PRETTY_NAME=JBoss`, "Red Hat Enterprise Linux Server 7.9"},
 		{"RHEL 9", `NAME="Red Hat Enterprise Linux"
 VERSION="9.4 (Plow)"
 VERSION_ID="9.4"

@@ -137,7 +137,11 @@ fi
 
 if [ "$SCHEDULE" -eq 1 ]; then
     say "Scheduling"
-    "$BIN_DIR/lhc" install --config "$CONF" ${SCHED[@]+"${SCHED[@]}"}
+    args=(install --config "$CONF")
+    if [ ${#SCHED[@]} -gt 0 ]; then args+=("${SCHED[@]}"); fi
+    out="$("$BIN_DIR/lhc" "${args[@]}")" || { printf '%s\n' "$out"; die "could not schedule lhc"; }
+    # "Done. Next:" below lists `lhc report` already.
+    printf '%s\n' "$out" | grep -v '^  Preview a report now' || true
 fi
 
 # `lhc install` already says this when it schedules.

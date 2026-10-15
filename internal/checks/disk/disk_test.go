@@ -171,9 +171,11 @@ func TestThresholdsAndAlerts(t *testing.T) {
 	}
 }
 
+// The value fits beside the meter in the text report; the old
+// "40.0% used  (4 GB of 10 GB, 6 GB free)" lost its free figure there.
 func TestValueFormat(t *testing.T) {
 	s := newEnv(t, nil, df("/dev/sda1 10485760 4194304 6291456 40% /")).Run(Check{})
-	if v := checktest.Rows(s)["/"].Value; v != "40.0% used  (4 GB of 10 GB, 6 GB free)" {
+	if v := checktest.Rows(s)["/"].Value; v != "40% · 6 GB free of 10 GB" {
 		t.Fatalf("value %q", v)
 	}
 }

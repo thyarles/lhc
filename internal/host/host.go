@@ -125,7 +125,7 @@ func ParseOSRelease(b []byte) map[string]string {
 }
 
 // OSName is the operating system as the report shows it: PRETTY_NAME, unless
-// it does not even carry the version, in which case NAME and VERSION.
+// it does not even carry the version, in which case NAME and VERSION_ID.
 //
 // PRETTY_NAME is free text, and admins edit it: one RHEL 7 host in the
 // first real run had PRETTY_NAME=JBoss, with NAME and VERSION intact.
@@ -141,9 +141,11 @@ func OSName(osr map[string]string) string {
 	if pretty != "" && (major == "" || strings.Contains(pretty, major)) {
 		return pretty
 	}
-	version := osr["VERSION"]
+	// VERSION_ID before VERSION: "7.9", not "7.9 (Maipo)", which did not
+	// fit the report.
+	version := id
 	if version == "" {
-		version = id
+		version = osr["VERSION"]
 	}
 	if name := strings.TrimSpace(osr["NAME"] + " " + version); osr["NAME"] != "" {
 		return name

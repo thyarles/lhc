@@ -73,6 +73,12 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 		if err1 != nil || err2 != nil {
 			continue
 		}
+		// Kubernetes nodes run without swap on purpose. "0.0% used (0 B of
+		// 0 B)" read like an idle swap; disabled is a different fact.
+		if label == "Swap" && total == 0 {
+			s.Add(label, "Disabled", check.OK)
+			continue
+		}
 		free := total - used
 		if len(p) > 3 {
 			f, err := strconv.ParseInt(p[3], 10, 64)
@@ -96,7 +102,7 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 			s.Fact("ram", fmt.Sprintf("%.0f%%", pct), st)
 		}
 		s.Add(label,
-			fmt.Sprintf("%.1f%% used  (%s of %s, %s free)", pct, fmtBytes(used), fmtBytes(total), fmtBytes(free)),
+			usage(pct, free, total),
 			st, check.Meter(pct), check.Delta(deltaNote(prev, label, pct)))
 	}
 
@@ -104,6 +110,12 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 		env.Log.Warn("saving memory usage", "err", err)
 	}
 	return s
+}
+
+// usage is the value beside the meter. It fits the 78-column text report,
+// where "15.2% used  (279 MB of 1 GB, 1 GB free)" lost its free figure.
+func usage(pct float64, free, total int64) string {
+	return fmt.Sprintf("%.0f%% · %s free of %s", pct, fmtBytes(free), fmtBytes(total))
 }
 
 // deltaNote is the signed change since the previous run. A percentage on its
