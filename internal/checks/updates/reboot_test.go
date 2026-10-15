@@ -2,6 +2,7 @@ package updates
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -73,8 +74,8 @@ func TestAptRebootRequiredFileListsThePackages(t *testing.T) {
 	e.Fake.File("/var/run/reboot-required", "*** System restart required ***\n")
 	e.Fake.File("/var/run/reboot-required.pkgs", "linux-image-6.1.0-26-amd64\nlibc6\nlinux-image-6.1.0-26-amd64\n")
 	s := e.Run(Check{})
-	mustRow(t, s, yesToday, check.Caution, "updated since boot: linux-image-6.1.0-26-amd64, libc6")
-	if got := checktest.Facts(s)["reboot_required"]; got.Value != "yes" || got.Status != check.Caution {
+	mustRow(t, s, yesToday, check.Info, "updated since boot: linux-image-6.1.0-26-amd64, libc6")
+	if got := checktest.Facts(s)["reboot_required"]; got.Value != "yes" || got.Status != check.Info {
 		t.Fatalf("fact = %+v", got)
 	}
 	// The default waits 14 days before anyone is alerted.
@@ -91,7 +92,7 @@ func TestAptWithoutTheFileComparesKernels(t *testing.T) {
 	e := newEnv(t, "apt-get", nil)
 	e.Fake.Expect("uname -r", "6.1.0-9-amd64")
 	e.Fake.Expect("dpkg-query", dpkgKernels)
-	mustRow(t, e.Run(Check{}), yesToday, check.Caution, "kernel 6.1.0-26-amd64 installed, 6.1.0-9-amd64 running")
+	mustRow(t, e.Run(Check{}), yesToday, check.Info, "kernel 6.1.0-26-amd64 installed, 6.1.0-9-amd64 running")
 }
 
 func TestAptRunningTheNewestKernelIsNo(t *testing.T) {
@@ -129,14 +130,14 @@ func TestNeedsRestartingExit1IsYes(t *testing.T) {
 	e := newEnv(t, "dnf", nil)
 	e.Fake.Tool("needs-restarting")
 	e.Fake.Expect("needs-restarting -r", dnfRebootNeeded).Code(1)
-	mustRow(t, e.Run(Check{}), yesToday, check.Caution, "updated since boot: glibc, kernel, systemd")
+	mustRow(t, e.Run(Check{}), yesToday, check.Info, "updated since boot: glibc, kernel, systemd")
 }
 
 func TestNeedsRestartingOnRHEL7(t *testing.T) {
 	e := newEnv(t, "yum", nil)
 	e.Fake.Tool("needs-restarting")
 	e.Fake.Expect("needs-restarting -r", yumRebootNeeded).Code(1)
-	mustRow(t, e.Run(Check{}), yesToday, check.Caution, "updated since boot: kernel")
+	mustRow(t, e.Run(Check{}), yesToday, check.Info, "updated since boot: kernel")
 }
 
 func TestNeedsRestartingExit0IsNo(t *testing.T) {
@@ -152,7 +153,7 @@ func TestNeedsRestartingExit0IsNo(t *testing.T) {
 func TestTheDnfPluginIsTriedWithoutTheCommand(t *testing.T) {
 	e := newEnv(t, "dnf", nil)
 	e.Fake.Expect("dnf needs-restarting -r", dnfRebootNeeded).Code(1)
-	mustRow(t, e.Run(Check{}), yesToday, check.Caution, "updated since boot: glibc, kernel, systemd")
+	mustRow(t, e.Run(Check{}), yesToday, check.Info, "updated since boot: glibc, kernel, systemd")
 }
 
 func TestAMissingDnfPluginIsNotAYes(t *testing.T) {
@@ -170,7 +171,7 @@ func TestAnUnexpectedExitFallsThroughToTheKernels(t *testing.T) {
 	e.Fake.Expect("needs-restarting -r", "Error: rpmdb open failed\nreboot").Code(2)
 	e.Fake.Expect("uname -r", "5.14.0-362.8.1.el9_3.x86_64")
 	e.Fake.Expect("rpm -q --last", rpmKernelsEL9).Code(1)
-	mustRow(t, e.Run(Check{}), yesToday, check.Caution,
+	mustRow(t, e.Run(Check{}), yesToday, check.Info,
 		"kernel 5.14.0-427.13.1.el9_4.x86_64 installed, 5.14.0-362.8.1.el9_3.x86_64 running")
 }
 
@@ -208,7 +209,7 @@ func TestZypperNeedsRebooting(t *testing.T) {
 func TestZypperRebootNeededFile(t *testing.T) {
 	e := newEnv(t, "zypper", nil)
 	e.Fake.File("/run/reboot-needed", "")
-	mustRow(t, e.Run(Check{}), yesToday, check.Caution, "")
+	mustRow(t, e.Run(Check{}), yesToday, check.Info, "")
 }
 
 func TestAnOldZypperFallsThroughToTheSUSEKernelNames(t *testing.T) {
@@ -239,7 +240,7 @@ func pendingFor(t *testing.T, cfg *Config, age time.Duration) (*checktest.Env, *
 func TestARebootAlertsOnlyOnceItHasWaitedTooLong(t *testing.T) {
 	_, s := pendingFor(t, nil, 24*time.Hour)
 	checktest.NoAlerts(t, s)
-	mustRow(t, s, "Yes — since 2026-01-04", check.Caution, "")
+	mustRow(t, s, "Yes — since 2026-01-04", check.Info, "")
 
 	_, s = pendingFor(t, nil, 14*24*time.Hour)
 	checktest.NoAlerts(t, s)
@@ -251,6 +252,81 @@ func TestARebootAlertsOnlyOnceItHasWaitedTooLong(t *testing.T) {
 	mustRow(t, s, "Yes — since 2025-12-21", check.Caution, "")
 }
 
+// CAUTION after 14 days, UNHEALTHY after 30, and one alert identity across
+// both, so the second step reads as the same condition getting worse.
+func TestALongPendingRebootBecomesUnhealthy(t *testing.T) {
+	_, s := pendingFor(t, nil, 31*24*time.Hour)
+	mustRow(t, s, "Yes — since 2025-12-05", check.Unhealthy, "")
+	if got := s.AlertMsgs(); !slices.Equal(got, []string{"Reboot pending for more than 30 days"}) {
+		t.Fatalf("alerts %q", got)
+	}
+	if got := checktest.Facts(s)["reboot_required"].Status; got != check.Unhealthy {
+		t.Fatalf("fact status %v", got)
+	}
+	digitless := func(m string) string {
+		return strings.Map(func(r rune) rune {
+			if r >= '0' && r <= '9' {
+				return -1
+			}
+			return r
+		}, m)
+	}
+	if digitless("Reboot pending for more than 30 days") != digitless("Reboot pending for more than 14 days") {
+		t.Fatal("the two steps would be two conditions")
+	}
+
+	_, s = pendingFor(t, &Config{Toggle: check.On, RebootCautionDays: 14}, 400*24*time.Hour)
+	mustRow(t, s, "Yes — since 2024-12-01", check.Caution, "")
+}
+
+// The RHEL 10 host's kernel and glibc were updated ten weeks before lhc's
+// first run, which said "since today".
+func TestTheRebootIsDatedFromTheUpdateThatRequiredIt(t *testing.T) {
+	boot := time.Date(2025, 10, 1, 8, 0, 0, 0, time.UTC)
+	e := newEnv(t, "dnf", nil)
+	e.Fake.File("/proc/stat", "cpu  1 2 3\nbtime "+itoa(boot.Unix())+"\nprocesses 9\n")
+	e.Fake.Tool("needs-restarting")
+	e.Fake.Expect("needs-restarting -r", dnfRebootNeeded).Code(1)
+	e.Fake.Expect("rpm -qa --qf", strings.Join([]string{
+		itoa(boot.Add(-48*time.Hour).Unix()) + " kernel",   // before boot: running
+		itoa(boot.Add(30*24*time.Hour).Unix()) + " kernel", // the one waiting
+		itoa(boot.Add(20*24*time.Hour).Unix()) + " glibc",
+		itoa(boot.Add(5*24*time.Hour).Unix()) + " bash", // not named: ignored
+	}, "\n"))
+	s := e.Run(Check{})
+	mustRow(t, s, "Yes — since 2025-10-21", check.Unhealthy, "updated since boot: glibc, kernel, systemd")
+	var since string
+	if !e.Loaded(t, rebootStateKey, &since) || since != "2025-10-21T08:00:00Z" {
+		t.Fatalf("reboot_since = %q", since)
+	}
+}
+
+func TestWithoutNamesTheKernelDatesTheReboot(t *testing.T) {
+	boot := time.Date(2025, 12, 20, 0, 0, 0, 0, time.UTC)
+	e := newEnv(t, "zypper", nil)
+	e.Fake.File("/proc/stat", "btime "+itoa(boot.Unix())+"\n")
+	e.Fake.File("/run/reboot-needed", "")
+	e.Fake.Expect("rpm -qa --qf", itoa(boot.Add(24*time.Hour).Unix())+" kernel-default\n"+itoa(boot.Add(time.Hour).Unix())+" glibc")
+	mustRow(t, e.Run(Check{}), "Yes — since 2025-12-21", check.Caution, "")
+}
+
+func TestAptIsDatedByTheFilesChangeTime(t *testing.T) {
+	boot := time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)
+	e := newEnv(t, "apt-get", nil)
+	e.Fake.File("/proc/stat", "btime "+itoa(boot.Unix())+"\n")
+	e.Fake.File("/var/run/reboot-required", "")
+	e.Fake.Expect("stat -c %Z /var/run/reboot-required", itoa(boot.Add(10*24*time.Hour).Unix()))
+	mustRow(t, e.Run(Check{}), "Yes — since 2025-12-11", check.Caution, "")
+}
+
+func TestWithoutABootTimeTheFirstSightingDatesIt(t *testing.T) {
+	e := newEnv(t, "dnf", nil)
+	e.Fake.Tool("needs-restarting")
+	e.Fake.Expect("needs-restarting -r", dnfRebootNeeded).Code(1)
+	e.Fake.Expect("rpm -qa --qf", "1600000000 kernel")
+	mustRow(t, e.Run(Check{}), yesToday, check.Info, "updated since boot: glibc, kernel, systemd")
+}
+
 func TestTheAlertUsesTheConfiguredDays(t *testing.T) {
 	_, s := pendingFor(t, &Config{Toggle: check.On, RebootCautionDays: 3}, 4*24*time.Hour)
 	if !checktest.HasAlertContaining(s, "more than 3 days") {
@@ -258,10 +334,11 @@ func TestTheAlertUsesTheConfiguredDays(t *testing.T) {
 	}
 }
 
+// A database server that is not rebooted by policy sets both to 0.
 func TestZeroDaysNeverAlerts(t *testing.T) {
 	_, s := pendingFor(t, &Config{Toggle: check.On}, 400*24*time.Hour)
 	checktest.NoAlerts(t, s)
-	mustRow(t, s, "Yes — since 2024-12-01", check.Caution, "")
+	mustRow(t, s, "Yes — since 2024-12-01", check.Info, "")
 }
 
 func TestARebootClearsTheClock(t *testing.T) {
@@ -295,7 +372,7 @@ func TestACorruptOrFutureStampRestartsTheClock(t *testing.T) {
 		e := newEnv(t, "apt-get", nil)
 		e.Fake.File("/var/run/reboot-required", "")
 		e.Seed(t, rebootStateKey, stamp)
-		mustRow(t, e.Run(Check{}), yesToday, check.Caution, "")
+		mustRow(t, e.Run(Check{}), yesToday, check.Info, "")
 	}
 }
 
@@ -313,6 +390,15 @@ func TestTheRebootRowSurvivesUnreachableMirrors(t *testing.T) {
 func TestRebootDaysMustNotBeNegative(t *testing.T) {
 	if err := (&Config{RebootCautionDays: -1}).Validate(); err == nil || !strings.Contains(err.Error(), "reboot_caution_days") {
 		t.Fatalf("err = %v", err)
+	}
+	if err := (&Config{RebootUnhealthyDays: -1}).Validate(); err == nil || !strings.Contains(err.Error(), "reboot_unhealthy_days") {
+		t.Fatalf("err = %v", err)
+	}
+	if err := (&Config{RebootCautionDays: 30, RebootUnhealthyDays: 14}).Validate(); err == nil {
+		t.Fatal("caution above unhealthy accepted")
+	}
+	if err := (&Config{RebootCautionDays: 30}).Validate(); err != nil {
+		t.Fatalf("caution with unhealthy off: %v", err)
 	}
 }
 
@@ -347,3 +433,5 @@ func TestVersionCmp(t *testing.T) {
 		t.Error("equal versions")
 	}
 }
+
+func itoa(n int64) string { return strconv.FormatInt(n, 10) }
