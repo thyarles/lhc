@@ -152,9 +152,18 @@ func (a *app) pass(ctx context.Context, o runOpts) error {
 	now := a.now()
 	say("[%s] Running health checks on %s...", now.Format("2006-01-02 15:04:05"), h.Label)
 
-	states := &state.Dir{Path: a.paths.State, ReadOnly: !o.deliver, Now: a.now}
+	// A delivering run holds every baseline back until the report reached
+	// someone (see commit below).
+	states := &state.Dir{Path: a.paths.State, ReadOnly: !o.deliver, Deferred: o.deliver, Now: a.now}
 	base := check.Env{Runner: a.runner, Log: log, Now: a.now, Host: h}
 	res := check.RunAll(ctx, check.All(), a.cfg.Checks, states, base)
+	// Ctrl+C, or systemd stopping the service, leaves checks half done:
+	// "0 listening sockets", "nobody logged in". Such a report misleads
+	// whoever reads it, and its baselines would flag every real port as new
+	// tomorrow. Deferred state means returning here saves nothing.
+	if ctx.Err() != nil {
+		return &exitError{code: 130, err: errInterrupted}
+	}
 	say("  Overall status: %s", res.Overall.Word())
 
 	policy := alerts.Policy{
@@ -200,21 +209,33 @@ func (a *app) pass(ctx context.Context, o runOpts) error {
 	if len(to) == 0 {
 		say("  No recipients configured — nothing sent (set email.daily_recipients)")
 		// Nothing was lost: there was nobody to tell. Commit normally.
-		return decision.Commit()
+		return commit(decision, states)
 	}
 	sender := a.sender(h)
 	msg := notify.Message{
 		From: a.fromAddress(h), To: to, Subject: subject, Text: text, HTML: html, HTMLMode: a.cfg.Email.HTMLMode,
 	}
 	if err := sender.Send(ctx, msg); err != nil {
-		// Only a delivered message marks conditions as notified. If the relay
-		// was down, the next run treats them as new and tries again.
+		// Only a delivered message marks conditions as notified and moves the
+		// baselines. If the relay was down, the next run diffs against the
+		// last delivered state, finds the same changes and tries again.
 		say("  ✗ Email failed (%s:%d) → %v", a.cfg.SMTP.Host, a.cfg.SMTP.Port, err)
 		say("  ! Delivery failed — alerts left unacknowledged, will retry next run")
 		return &exitError{code: 2, err: fmt.Errorf("delivery failed: %w", err)}
 	}
 	say("  ✓ Email sent → %s", strings.Join(to, ", "))
-	return decision.Commit()
+	return commit(decision, states)
+}
+
+// errInterrupted ends a pass cut short by a signal.
+var errInterrupted = errors.New("interrupted: no report printed, nothing sent or saved")
+
+// commit records the alert history and the baselines together.
+func commit(d *alerts.Decision, states *state.Dir) error {
+	if err := d.Commit(); err != nil {
+		return err
+	}
+	return states.Flush()
 }
 
 func (a *app) print(format string, m *report.Model, text, html string) error {
