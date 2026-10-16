@@ -17,6 +17,7 @@ import (
 
 	"github.com/thyarles/lhc/internal/alerts"
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/fleet"
 	"github.com/thyarles/lhc/internal/notify"
 	"github.com/thyarles/lhc/internal/report"
 	"github.com/thyarles/lhc/internal/schedule"
@@ -194,8 +195,22 @@ func (a *app) pass(ctx context.Context, o runOpts) error {
 		say("  Report saved: %s", path)
 	}
 
+	err = a.mail(ctx, say, h, res.Overall, decision, states, text, html, now)
+	// After the mail, whatever became of it: a collector is a second path
+	// for the report, and a dead one never changes how this run ends.
+	if outs := a.toCollectors(ctx, say, m); len(outs) > 0 {
+		say("  Fleet: %d of %d collector(s) accepted the report", fleet.Accepted(outs), len(outs))
+	}
+	return err
+}
+
+// mail sends the run's message and, once the relay accepted it, commits the
+// alert history and the baselines.
+func (a *app) mail(ctx context.Context, say func(string, ...any), h check.Host, overall check.Status,
+	decision *alerts.Decision, states *state.Dir, text, html string, now time.Time,
+) error {
 	to, isAlert := notify.PlanDelivery(decision, a.cfg.Email.DailyRecipients, a.cfg.Email.AlertRecipients)
-	subject := notify.Subject(res.Overall, decision, h.Label, isAlert, now)
+	subject := notify.Subject(overall, decision, h.Label, isAlert, now)
 	say("  Subject: %s", subject)
 	switch {
 	case isAlert:
@@ -229,6 +244,48 @@ func (a *app) pass(ctx context.Context, o runOpts) error {
 	}
 	say("  ✓ Email sent → %s", strings.Join(to, ", "))
 	return commit(decision, states)
+}
+
+// toCollectors sends the JSON report to every fleet collector, one after
+// another. It never fails the run: mail is the path that must always work.
+// The outcomes say whether any collector holds the report.
+func (a *app) toCollectors(ctx context.Context, say func(string, ...any), m *report.Model) []fleet.Outcome {
+	cs := a.cfg.Fleet.Collectors
+	if len(cs) == 0 {
+		return nil
+	}
+	env, err := a.seal(m)
+	if err != nil {
+		say("  ! Fleet: report not sent → %v", err)
+		outs := make([]fleet.Outcome, len(cs))
+		for i, c := range cs {
+			outs[i] = fleet.Outcome{Collector: c, Err: err}
+		}
+		return outs
+	}
+	outs := fleet.Send(ctx, cs, env, fleet.SendTimeout)
+	for _, o := range outs {
+		if o.Err != nil {
+			say("  ! Collector %s not reached → %v", o.Collector, o.Err)
+		} else {
+			say("  ✓ Report sent → collector %s", o.Collector)
+		}
+	}
+	return outs
+}
+
+func (a *app) seal(m *report.Model) (*fleet.Envelope, error) {
+	key, err := fleet.LoadKey(a.cfg.Fleet.KeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("fleet.key_file: %w", err)
+	}
+	body, err := report.JSON(m)
+	if err != nil {
+		return nil, err
+	}
+	// Stamped now, not when the checks started: a slow run plus a mail
+	// retry can take minutes, and the collector allows ten.
+	return fleet.Seal(key, m.Host, a.now(), body)
 }
 
 // errInterrupted ends a pass cut short by a signal.

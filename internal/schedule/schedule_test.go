@@ -3,8 +3,11 @@ package schedule
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math/rand/v2"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -268,4 +271,40 @@ func TestInstallPointsOutThePythonCronEntryOnEitherBackend(t *testing.T) {
 			t.Errorf("%s: warned %d times:\n%s", b, n, out.String())
 		}
 	}
+}
+
+func TestTheCollectorServiceInstallsAndUninstalls(t *testing.T) {
+	old := UnitDir
+	UnitDir = t.TempDir()
+	t.Cleanup(func() { UnitDir = old })
+	fake := checktest.NewRunner()
+	in := &Installer{Runner: fake, Out: func(string, ...any) {}}
+	job := Job{Binary: "/usr/local/bin/lhc", Config: "/etc/lhc/config.yaml"}
+	if err := in.InstallCollector(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	unit := readUnit(t, CollectorName)
+	for _, want := range []string{"ExecStart=/usr/local/bin/lhc collect --config /etc/lhc/config.yaml", "Type=simple", "Restart=always", "ExecReload=/bin/kill -HUP $MAINPID"} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("unit lacks %q:\n%s", want, unit)
+		}
+	}
+	if calls := strings.Join(fake.Calls(), "\n"); !strings.Contains(calls, "systemctl enable --now "+CollectorName) {
+		t.Fatal(calls)
+	}
+	if err := in.Uninstall(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(UnitDir, CollectorName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("the collector unit is still there")
+	}
+}
+
+func readUnit(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(UnitDir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

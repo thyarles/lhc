@@ -13,6 +13,11 @@
 #   # install the binary and config only, no timer/cron entry
 #   ... | bash -s -- --no-schedule
 #
+#   # fleet: copy the shared key in; --collector also runs `lhc collect`
+#   ... | bash -s -- --fleet-key-file ./fleet.key \
+#       --set fleet.collectors=http://192.0.2.10:8461,http://192.0.2.11:8461
+#   ... | bash -s -- --fleet-key-file ./fleet.key --collector
+#
 # What it does: downloads lhc_linux_<arch>.tar.gz and checksums.txt from the
 # GitHub release, verifies the SHA-256, installs /usr/local/bin/lhc, creates
 # /etc/lhc/config.yaml if there is none, applies --set, and runs `lhc install`
@@ -37,15 +42,20 @@ TAG=""
 SETS=()
 SCHED=()
 SCHEDULE=1
+FLEET_KEY=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        -h|--help) sed -n '2,28p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,32p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'; exit 0 ;;
         --set)     shift; [ $# -gt 0 ] || die "--set needs key=value"; SETS+=("$1") ;;
         --set=*)   SETS+=("${1#--set=}") ;;
         --time|--every|--backend)
                    opt="$1"; shift; [ $# -gt 0 ] || die "$opt needs a value"; SCHED+=("$opt" "$1") ;;
         --time=*|--every=*|--backend=*) SCHED+=("$1") ;;
         --no-random)   SCHED+=("--no-random") ;;
+        --collector)   SCHED+=("--collector") ;;
+        --fleet-key-file)
+                   shift; [ $# -gt 0 ] || die "--fleet-key-file needs a file"; FLEET_KEY="$1" ;;
+        --fleet-key-file=*) FLEET_KEY="${1#--fleet-key-file=}" ;;
         --no-schedule) SCHEDULE=0 ;;
         -*) die "unknown option '$1' (see --help)" ;;
         *)  [ -z "$TAG" ] || die "two versions given: '$TAG' and '$1'"; TAG="$1" ;;
@@ -133,6 +143,13 @@ fi
 if [ ${#SETS[@]} -gt 0 ]; then
     say "Applying ${#SETS[@]} setting(s)"
     "$BIN_DIR/lhc" config set --config "$CONF" "${SETS[@]}"
+fi
+
+if [ -n "$FLEET_KEY" ]; then
+    # A file, never a --set value: the key would land in shell history.
+    [ -f "$FLEET_KEY" ] || die "--fleet-key-file: $FLEET_KEY is not a file"
+    say "Installing the fleet key as /etc/lhc/fleet.key"
+    install -m 0600 -o root -g root "$FLEET_KEY" /etc/lhc/fleet.key
 fi
 
 if [ "$SCHEDULE" -eq 1 ]; then

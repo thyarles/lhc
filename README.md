@@ -101,6 +101,10 @@ lhc uninstall                 # remove the timer/cron entry, keep everything els
 lhc tools [--install]         # which helper tools are missing
 lhc paths                     # where the config, state, reports and log live
 lhc serve                     # foreground scheduler, for hosts with neither systemd nor cron
+
+lhc fleet keygen              # once per fleet: the shared key for collectors
+lhc fleet status              # on a collector: every host's latest report and its age
+lhc fleet forget HOST         # on a collector: drop a decommissioned host
 ```
 
 `lhc report` and `lhc run --dry-run` never touch the saved baselines, so a
@@ -160,6 +164,42 @@ delivered run, finds the same changes and tries again. A relay that answers
 An interrupted run (Ctrl+C, or the service stopped mid-run) prints, sends
 and saves nothing.
 
+## Fleet
+
+With many hosts, one mail per host per day stops being read, and a host that
+stops reporting is invisible among the rest. Hosts can also send their report
+to **collectors**: ordinary lhc hosts that also run `lhc collect` and keep the
+latest report of every host in `/var/lib/lhc/fleet/`.
+
+```sh
+# once, anywhere: the fleet's shared key
+lhc fleet keygen --out ./fleet.key
+
+# on each of the two collectors (systemd needed)
+curl -fsSL .../install.sh | bash -s -- --fleet-key-file ./fleet.key --collector
+
+# on every host, collectors included
+curl -fsSL .../install.sh | bash -s -- --fleet-key-file ./fleet.key \
+    --set fleet.collectors=http://192.0.2.10:8461,http://192.0.2.11:8461
+```
+
+- **Two collectors** are the expected setup. Each host sends to every one,
+  and each collector is independent, so losing one loses nothing.
+- **One way only.** A collector answers `POST /v1/report` with 204 or an
+  empty 400, and 404 to anything else. It never sends a host anything to act
+  on.
+- **Encrypted end to end.** Each report is gzipped and sealed with AES-256-GCM
+  under the shared key, with the host name and the time bound to it. Plain
+  HTTP is therefore enough. Without the key a report can be neither read nor
+  forged, a recorded request cannot be replayed, and a clock more than 10
+  minutes off is refused.
+- **Never in the way.** The report goes to the collectors after the mail,
+  10 seconds at most for each. A collector that is down is logged, and the
+  run's exit status and its mail stay the same.
+- A refusal's reason is only in the collector's journal:
+  `journalctl -u lhc-collect`.
+- Open port 8461/tcp on the collectors to the fleet's hosts.
+
 ## Files
 
 | | root | user |
@@ -168,6 +208,8 @@ and saves nothing.
 | state (baselines, alert history) | `/var/lib/lhc/*.json` | `~/.local/state/lhc/` |
 | saved reports (`reports.keep`, default 30) | `/var/lib/lhc/reports/` | `~/.local/state/lhc/reports/` |
 | log of scheduled runs | `/var/log/lhc.log` | `~/.local/state/lhc/lhc.log` |
+| fleet key | `/etc/lhc/fleet.key` (`fleet.key_file`) | |
+| collector: latest report per host | `/var/lib/lhc/fleet/<host>.json` | |
 
 ## Moving from the Python version
 

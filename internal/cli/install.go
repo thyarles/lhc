@@ -9,13 +9,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/thyarles/lhc/internal/config"
+	"github.com/thyarles/lhc/internal/fleet"
 	"github.com/thyarles/lhc/internal/runner"
 	"github.com/thyarles/lhc/internal/schedule"
 )
 
 func newInstallCmd(a *app) *cobra.Command {
 	var at, every, backend string
-	var noRandom bool
+	var noRandom, collector bool
 	cmd := &cobra.Command{
 		Use:   "install",
 		Short: "Schedule lhc: a systemd timer where possible, otherwise a crontab entry",
@@ -24,7 +25,11 @@ install the schedule. Re-running it is safe: it replaces what it installed.
 
 systemd is used when running as root on systemd 229 or later (timers with a
 random delay); otherwise cron. With neither, run "lhc serve" under your own
-supervisor.`,
+supervisor.
+
+--collector also makes this host a fleet collector: it sets
+collector.enabled and runs "lhc collect" as the lhc-collect service. That
+needs systemd and the fleet key (lhc fleet keygen) in place first.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path := a.configPath()
@@ -33,6 +38,19 @@ supervisor.`,
 					return err
 				}
 				a.printf("  ✓ Created %s from the example", path)
+			}
+			if collector {
+				// Checked before anything is changed: a service without its
+				// key would restart every five seconds, forever.
+				if err := a.load(); err != nil {
+					return err
+				}
+				if schedule.Detect(cmd.Context(), a.runner, isRoot()) != schedule.Systemd {
+					return errors.New("--collector needs systemd 229 or later, as root: lhc collect runs as a service")
+				}
+				if _, err := fleet.LoadKey(a.cfg.Fleet.KeyFile); err != nil {
+					return fmt.Errorf("--collector needs the fleet key first (lhc fleet keygen, or copy the fleet's key file): %w", err)
+				}
 			}
 			var sets []string
 			if at != "" {
@@ -43,6 +61,9 @@ supervisor.`,
 			}
 			if noRandom {
 				sets = append(sets, "schedule.random=false")
+			}
+			if collector {
+				sets = append(sets, "collector.enabled=true")
 			}
 			if len(sets) > 0 {
 				var assigns []config.Assignment
@@ -80,6 +101,12 @@ supervisor.`,
 			if err := in.Install(cmd.Context(), b, a.cfg.Schedule, schedule.Job{Binary: bin, Config: path, Log: a.paths.Log}); err != nil {
 				return err
 			}
+			if collector {
+				if err := in.InstallCollector(cmd.Context(), schedule.Job{Binary: bin, Config: path}); err != nil {
+					return err
+				}
+				a.printf("  Collecting on %s: open it in the firewall to the fleet's hosts", a.cfg.Collector.Listen)
+			}
 			a.printf("  Schedule: %s", schedule.Describe(a.cfg.Schedule))
 			if len(a.cfg.Email.DailyRecipients) == 0 {
 				a.printf("  ! No recipients yet: lhc config set email.daily_recipients=ops@example.com smtp.host=relay.example.com")
@@ -93,13 +120,14 @@ supervisor.`,
 	f.StringVar(&every, "every", "", "run every N hours, e.g. 6h; 0 = daily (saved as schedule.every)")
 	f.BoolVar(&noRandom, "no-random", false, "no random delay (saved as schedule.random=false)")
 	f.StringVar(&backend, "backend", "", "force systemd or cron")
+	f.BoolVar(&collector, "collector", false, "also run the fleet collector service (lhc collect)")
 	return cmd
 }
 
 func newUninstallCmd(a *app) *cobra.Command {
 	return &cobra.Command{
 		Use:   "uninstall",
-		Short: "Remove the systemd timer or crontab entry (config, state and reports are kept)",
+		Short: "Remove the systemd timer or crontab entry, and the collector service (config, state and reports are kept)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// A broken config must not stop anyone removing the schedule, so

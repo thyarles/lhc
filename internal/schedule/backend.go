@@ -35,6 +35,8 @@ var (
 	UnitDir     = "/etc/systemd/system"
 	ServiceName = "lhc.service"
 	TimerName   = "lhc.timer"
+	// CollectorName is the long-running `lhc collect` of a fleet collector.
+	CollectorName = "lhc-collect.service"
 )
 
 // Detect picks the backend. systemd needs root (these are system units), a
@@ -85,6 +87,29 @@ ExecStart=%s run --scheduled --no-random --config %s
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
+`, j.Binary, j.Config)
+}
+
+// CollectorUnit keeps `lhc collect` running. SIGHUP (systemctl reload)
+// re-reads the config and the fleet key.
+func CollectorUnit(j Job) string {
+	return fmt.Sprintf(`# Managed by lhc install --collector. Changes are overwritten on the next install.
+[Unit]
+Description=lhc fleet collector (receives the fleet's reports)
+Documentation=https://github.com/thyarles/lhc
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%s collect --config %s
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target
 `, j.Binary, j.Config)
 }
 
@@ -240,9 +265,39 @@ func (in *Installer) warnLegacy(crontab string) {
 	}
 }
 
-// Uninstall removes whatever lhc installed, from either backend.
+// InstallCollector writes, enables and (re)starts lhc-collect.service. The
+// restart picks up a new binary after an upgrade.
+func (in *Installer) InstallCollector(ctx context.Context, j Job) error {
+	if err := os.WriteFile(filepath.Join(UnitDir, CollectorName), []byte(CollectorUnit(j)), 0o644); err != nil { //nolint:gosec // unit files are world-readable by convention
+		return err
+	}
+	for _, args := range [][]string{{"daemon-reload"}, {"enable", "--now", CollectorName}, {"restart", CollectorName}} {
+		if res := in.Runner.Run(ctx, "systemctl", args...); !res.OK() {
+			return fmt.Errorf("systemctl %s: %s", strings.Join(args, " "), firstLine(res.Stderr, res.Err))
+		}
+	}
+	in.Out("  ✓ collector service %s running", CollectorName)
+	return nil
+}
+
+// Uninstall removes whatever lhc installed, from either backend, and the
+// collector service if there is one.
 func (in *Installer) Uninstall(ctx context.Context) error {
-	return errors.Join(in.removeSystemd(ctx), in.removeCron(ctx))
+	return errors.Join(in.removeSystemd(ctx), in.removeCron(ctx), in.removeCollector(ctx))
+}
+
+func (in *Installer) removeCollector(ctx context.Context) error {
+	unit := filepath.Join(UnitDir, CollectorName)
+	if _, err := os.Stat(unit); err != nil {
+		return nil
+	}
+	in.Runner.Run(ctx, "systemctl", "disable", "--now", CollectorName)
+	if err := os.Remove(unit); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	in.Runner.Run(ctx, "systemctl", "daemon-reload")
+	in.Out("  ✓ collector service removed")
+	return nil
 }
 
 func (in *Installer) removeSystemd(ctx context.Context) error {
