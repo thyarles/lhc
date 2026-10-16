@@ -1,4 +1,4 @@
-package fleet
+package hub
 
 import (
 	"bytes"
@@ -47,7 +47,7 @@ func TestKeygenAndLoad(t *testing.T) {
 	if err != nil || len(k) != KeySize {
 		t.Fatalf("%v %d", err, len(k))
 	}
-	p := filepath.Join(t.TempDir(), "fleet.key")
+	p := filepath.Join(t.TempDir(), "hub.key")
 	if err := os.WriteFile(p, b, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +366,7 @@ func TestARefusalExplainsItself(t *testing.T) {
 	no := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusBadRequest) }))
 	defer no.Close()
 	outs := Send(context.Background(), []string{no.URL}, seal(t, key, "web01", t0, report("web01")), time.Second)
-	if outs[0].Err == nil || !strings.Contains(outs[0].Err.Error(), "wrong fleet key") {
+	if outs[0].Err == nil || !strings.Contains(outs[0].Err.Error(), "wrong hub key") {
 		t.Fatalf("%+v", outs)
 	}
 }

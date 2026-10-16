@@ -35,7 +35,7 @@ var (
 	UnitDir     = "/etc/systemd/system"
 	ServiceName = "lhc.service"
 	TimerName   = "lhc.timer"
-	// CollectorName is the long-running `lhc collect` of a fleet collector.
+	// CollectorName is the long-running `lhc collect` of a hub collector.
 	CollectorName = "lhc-collect.service"
 )
 
@@ -91,11 +91,11 @@ IOSchedulingPriority=7
 }
 
 // CollectorUnit keeps `lhc collect` running. SIGHUP (systemctl reload)
-// re-reads the config and the fleet key.
+// re-reads the config and the hub key.
 func CollectorUnit(j Job) string {
 	return fmt.Sprintf(`# Managed by lhc install --collector. Changes are overwritten on the next install.
 [Unit]
-Description=lhc fleet collector (receives the fleet's reports)
+Description=lhc hub collector (receives the hosts' reports)
 Documentation=https://github.com/thyarles/lhc
 Wants=network-online.target
 After=network-online.target

@@ -17,7 +17,7 @@ import (
 
 	"github.com/thyarles/lhc/internal/alerts"
 	"github.com/thyarles/lhc/internal/check"
-	"github.com/thyarles/lhc/internal/fleet"
+	"github.com/thyarles/lhc/internal/hub"
 	"github.com/thyarles/lhc/internal/notify"
 	"github.com/thyarles/lhc/internal/report"
 	"github.com/thyarles/lhc/internal/schedule"
@@ -199,7 +199,7 @@ func (a *app) pass(ctx context.Context, o runOpts) error {
 	// After the mail, whatever became of it: a collector is a second path
 	// for the report, and a dead one never changes how this run ends.
 	if outs := a.toCollectors(ctx, say, m); len(outs) > 0 {
-		say("  Fleet: %d of %d collector(s) accepted the report", fleet.Accepted(outs), len(outs))
+		say("  Hub: %d of %d collector(s) accepted the report", hub.Accepted(outs), len(outs))
 	}
 	return err
 }
@@ -246,24 +246,24 @@ func (a *app) mail(ctx context.Context, say func(string, ...any), h check.Host, 
 	return commit(decision, states)
 }
 
-// toCollectors sends the JSON report to every fleet collector, one after
+// toCollectors sends the JSON report to every hub collector, one after
 // another. It never fails the run: mail is the path that must always work.
 // The outcomes say whether any collector holds the report.
-func (a *app) toCollectors(ctx context.Context, say func(string, ...any), m *report.Model) []fleet.Outcome {
-	cs := a.cfg.Fleet.Collectors
+func (a *app) toCollectors(ctx context.Context, say func(string, ...any), m *report.Model) []hub.Outcome {
+	cs := a.cfg.Hub.Collectors
 	if len(cs) == 0 {
 		return nil
 	}
 	env, err := a.seal(m)
 	if err != nil {
-		say("  ! Fleet: report not sent → %v", err)
-		outs := make([]fleet.Outcome, len(cs))
+		say("  ! Hub: report not sent → %v", err)
+		outs := make([]hub.Outcome, len(cs))
 		for i, c := range cs {
-			outs[i] = fleet.Outcome{Collector: c, Err: err}
+			outs[i] = hub.Outcome{Collector: c, Err: err}
 		}
 		return outs
 	}
-	outs := fleet.Send(ctx, cs, env, fleet.SendTimeout)
+	outs := hub.Send(ctx, cs, env, hub.SendTimeout)
 	for _, o := range outs {
 		if o.Err != nil {
 			say("  ! Collector %s not reached → %v", o.Collector, o.Err)
@@ -274,10 +274,10 @@ func (a *app) toCollectors(ctx context.Context, say func(string, ...any), m *rep
 	return outs
 }
 
-func (a *app) seal(m *report.Model) (*fleet.Envelope, error) {
-	key, err := fleet.LoadKey(a.cfg.Fleet.KeyFile)
+func (a *app) seal(m *report.Model) (*hub.Envelope, error) {
+	key, err := hub.LoadKey(a.cfg.Hub.KeyFile)
 	if err != nil {
-		return nil, fmt.Errorf("fleet.key_file: %w", err)
+		return nil, fmt.Errorf("hub.key_file: %w", err)
 	}
 	body, err := report.JSON(m)
 	if err != nil {
@@ -285,7 +285,7 @@ func (a *app) seal(m *report.Model) (*fleet.Envelope, error) {
 	}
 	// Stamped now, not when the checks started: a slow run plus a mail
 	// retry can take minutes, and the collector allows ten.
-	return fleet.Seal(key, m.Host, a.now(), body)
+	return hub.Seal(key, m.Host, a.now(), body)
 }
 
 // errInterrupted ends a pass cut short by a signal.

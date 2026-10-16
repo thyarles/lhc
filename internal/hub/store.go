@@ -1,4 +1,4 @@
-package fleet
+package hub
 
 import (
 	"encoding/json"
@@ -54,7 +54,7 @@ func (s Store) Put(host string, st Stored) error {
 	return state.WriteFileAtomic(p, b, 0o600)
 }
 
-// Entry is one row of `lhc fleet status`.
+// Entry is one row of `lhc hub status`.
 type Entry struct {
 	Host       string
 	ReceivedAt time.Time
@@ -63,8 +63,8 @@ type Entry struct {
 	Err        error // the file could not be read
 }
 
-// List reads every host's file, sorted by host name. A missing store is an
-// empty fleet.
+// List reads every host's file, sorted by host name. A missing store
+// holds no hosts.
 func (s Store) List() ([]Entry, error) {
 	files, err := os.ReadDir(s.Dir)
 	if errors.Is(err, os.ErrNotExist) {

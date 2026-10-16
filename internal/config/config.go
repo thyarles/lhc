@@ -41,7 +41,7 @@ type Config struct {
 	Schedule  Schedule  `yaml:"schedule"`
 	Reports   Reports   `yaml:"reports"`
 	Paths     Paths     `yaml:"paths"`
-	Fleet     Fleet     `yaml:"fleet"`
+	Hub       Hub       `yaml:"hub"`
 	Collector Collector `yaml:"collector"`
 	// Checks holds each registered check's decoded config, by name.
 	Checks map[string]check.Config `yaml:"-"`
@@ -100,11 +100,11 @@ type Paths struct {
 	LogFile   string `yaml:"log_file"`
 }
 
-// Fleet is where this host sends its report after every run.
-type Fleet struct {
+// Hub is where this host sends its report after every run.
+type Hub struct {
 	// Base URLs of the collectors, e.g. http://192.0.2.10:8461. Empty = off.
 	Collectors []string `yaml:"collectors"`
-	// The shared fleet key: base64, 32 bytes, mode 0600.
+	// The shared hub key: base64, 32 bytes, mode 0600.
 	KeyFile string `yaml:"key_file"`
 }
 
@@ -122,7 +122,7 @@ func Default() *Config {
 		SMTP:  SMTP{Host: "relay.example.com", Port: 25, TLS: "none"},
 		Email: Email{DailyRecipients: []string{}, AlertRecipients: []string{}, HTMLMode: "inline"},
 		Alerts: Alerts{
-			// unhealthy is what the installed Python fleet actually ran.
+			// unhealthy is what the installed Python version actually ran.
 			NotifyAllOn:     "unhealthy",
 			RemindCaution:   Duration(168 * time.Hour),
 			RemindUnhealthy: Duration(24 * time.Hour),
@@ -130,7 +130,7 @@ func Default() *Config {
 		},
 		Schedule:  Schedule{Time: "00:07", Random: true, RandomWindow: "8h"},
 		Reports:   Reports{Keep: 30},
-		Fleet:     Fleet{Collectors: []string{}, KeyFile: "/etc/lhc/fleet.key"},
+		Hub:       Hub{Collectors: []string{}, KeyFile: "/etc/lhc/hub.key"},
 		Collector: Collector{Listen: ":8461", MaxReportSize: 1 << 20},
 		Checks:    map[string]check.Config{},
 	}
@@ -161,7 +161,7 @@ type file struct {
 	Schedule  *Schedule            `yaml:"schedule"`
 	Reports   *Reports             `yaml:"reports"`
 	Paths     *Paths               `yaml:"paths"`
-	Fleet     *Fleet               `yaml:"fleet"`
+	Hub       *Hub                 `yaml:"hub"`
 	Collector *Collector           `yaml:"collector"`
 	Checks    map[string]yaml.Node `yaml:"checks"`
 }
@@ -173,7 +173,7 @@ func Parse(b []byte) (*Config, error) {
 	f := file{
 		Hostname: c.Hostname, SMTP: &c.SMTP, Email: &c.Email, Alerts: &c.Alerts,
 		Schedule: &c.Schedule, Reports: &c.Reports, Paths: &c.Paths,
-		Fleet: &c.Fleet, Collector: &c.Collector,
+		Hub: &c.Hub, Collector: &c.Collector,
 	}
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 	dec.KnownFields(true)
@@ -309,13 +309,13 @@ func (c *Config) Validate() error {
 	if c.Reports.Keep < 0 {
 		bad("reports.keep: must not be negative")
 	}
-	for _, u := range c.Fleet.Collectors {
+	for _, u := range c.Hub.Collectors {
 		if err := collectorURL(u); err != nil {
-			bad("fleet.collectors: %v", err)
+			bad("hub.collectors: %v", err)
 		}
 	}
-	if len(c.Fleet.Collectors) > 0 && c.Fleet.KeyFile == "" {
-		bad("fleet.key_file: needed when fleet.collectors is set")
+	if len(c.Hub.Collectors) > 0 && c.Hub.KeyFile == "" {
+		bad("hub.key_file: needed when hub.collectors is set")
 	}
 	if _, port, err := net.SplitHostPort(c.Collector.Listen); err != nil || port == "" {
 		bad("collector.listen: %q is not host:port, e.g. :8461", c.Collector.Listen)
@@ -353,13 +353,13 @@ func (c *Config) Marshal() ([]byte, error) {
 		Schedule  Schedule                `yaml:"schedule"`
 		Reports   Reports                 `yaml:"reports"`
 		Paths     Paths                   `yaml:"paths"`
-		Fleet     Fleet                   `yaml:"fleet"`
+		Hub       Hub                     `yaml:"hub"`
 		Collector Collector               `yaml:"collector"`
 		Checks    map[string]check.Config `yaml:"checks"`
 	}
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
-	err := enc.Encode(out{c.Hostname, c.SMTP, c.Email, c.Alerts, c.Schedule, c.Reports, c.Paths, c.Fleet, c.Collector, c.Checks})
+	err := enc.Encode(out{c.Hostname, c.SMTP, c.Email, c.Alerts, c.Schedule, c.Reports, c.Paths, c.Hub, c.Collector, c.Checks})
 	return buf.Bytes(), err
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/thyarles/lhc/internal/config"
-	"github.com/thyarles/lhc/internal/fleet"
+	"github.com/thyarles/lhc/internal/hub"
 	"github.com/thyarles/lhc/internal/runner"
 	"github.com/thyarles/lhc/internal/schedule"
 )
@@ -27,9 +27,9 @@ systemd is used when running as root on systemd 229 or later (timers with a
 random delay); otherwise cron. With neither, run "lhc serve" under your own
 supervisor.
 
---collector also makes this host a fleet collector: it sets
+--collector also makes this host a hub collector: it sets
 collector.enabled and runs "lhc collect" as the lhc-collect service. That
-needs systemd and the fleet key (lhc fleet keygen) in place first.`,
+needs systemd and the hub key (lhc hub keygen) in place first.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path := a.configPath()
@@ -48,8 +48,8 @@ needs systemd and the fleet key (lhc fleet keygen) in place first.`,
 				if schedule.Detect(cmd.Context(), a.runner, isRoot()) != schedule.Systemd {
 					return errors.New("--collector needs systemd 229 or later, as root: lhc collect runs as a service")
 				}
-				if _, err := fleet.LoadKey(a.cfg.Fleet.KeyFile); err != nil {
-					return fmt.Errorf("--collector needs the fleet key first (lhc fleet keygen, or copy the fleet's key file): %w", err)
+				if _, err := hub.LoadKey(a.cfg.Hub.KeyFile); err != nil {
+					return fmt.Errorf("--collector needs the hub key first (lhc hub keygen, or copy the hub key file): %w", err)
 				}
 			}
 			var sets []string
@@ -105,7 +105,7 @@ needs systemd and the fleet key (lhc fleet keygen) in place first.`,
 				if err := in.InstallCollector(cmd.Context(), schedule.Job{Binary: bin, Config: path}); err != nil {
 					return err
 				}
-				a.printf("  Collecting on %s: open it in the firewall to the fleet's hosts", a.cfg.Collector.Listen)
+				a.printf("  Collecting on %s: open it in the firewall to the hosts that report here", a.cfg.Collector.Listen)
 			}
 			a.printf("  Schedule: %s", schedule.Describe(a.cfg.Schedule))
 			if len(a.cfg.Email.DailyRecipients) == 0 {
@@ -120,7 +120,7 @@ needs systemd and the fleet key (lhc fleet keygen) in place first.`,
 	f.StringVar(&every, "every", "", "run every N hours, e.g. 6h; 0 = daily (saved as schedule.every)")
 	f.BoolVar(&noRandom, "no-random", false, "no random delay (saved as schedule.random=false)")
 	f.StringVar(&backend, "backend", "", "force systemd or cron")
-	f.BoolVar(&collector, "collector", false, "also run the fleet collector service (lhc collect)")
+	f.BoolVar(&collector, "collector", false, "also run the hub collector service (lhc collect)")
 	return cmd
 }
 

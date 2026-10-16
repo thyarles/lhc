@@ -86,10 +86,10 @@ func TestValidation(t *testing.T) {
 		"schedule:\n  every: 90m\n",
 		"schedule:\n  random_window: soon\n",
 		"checks:\n  cpu:\n    caution: 99\n",
-		"fleet:\n  collectors: [192.0.2.10:8461]\n",
-		"fleet:\n  collectors: [\"ftp://192.0.2.10:8461\"]\n",
-		"fleet:\n  collectors: [\"http://192.0.2.10:8461/v1/report\"]\n",
-		"fleet:\n  collectors: [\"http://192.0.2.10:8461\"]\n  key_file: \"\"\n",
+		"hub:\n  collectors: [192.0.2.10:8461]\n",
+		"hub:\n  collectors: [\"ftp://192.0.2.10:8461\"]\n",
+		"hub:\n  collectors: [\"http://192.0.2.10:8461/v1/report\"]\n",
+		"hub:\n  collectors: [\"http://192.0.2.10:8461\"]\n  key_file: \"\"\n",
 		"collector:\n  listen: \"8461\"\n",
 		"collector:\n  max_report_size: 1KiB\n",
 		"collector:\n  max_report_size: lots\n",
@@ -104,12 +104,12 @@ func TestValidation(t *testing.T) {
 	}
 }
 
-func TestTheFleetIsOffByDefault(t *testing.T) {
+func TestTheHubIsOffByDefault(t *testing.T) {
 	c := config.Default()
-	if len(c.Fleet.Collectors) != 0 || c.Collector.Enabled || c.Collector.Listen != ":8461" || c.Collector.MaxReportSize != 1<<20 {
-		t.Fatalf("%+v %+v", c.Fleet, c.Collector)
+	if len(c.Hub.Collectors) != 0 || c.Collector.Enabled || c.Collector.Listen != ":8461" || c.Collector.MaxReportSize != 1<<20 {
+		t.Fatalf("%+v %+v", c.Hub, c.Collector)
 	}
-	c, err := config.Parse([]byte("fleet:\n  collectors: [\"http://192.0.2.10:8461\", \"https://collector.example.com:8461/\"]\ncollector:\n  max_report_size: 2MiB\n"))
+	c, err := config.Parse([]byte("hub:\n  collectors: [\"http://192.0.2.10:8461\", \"https://collector.example.com:8461/\"]\ncollector:\n  max_report_size: 2MiB\n"))
 	if err != nil {
 		t.Fatal(err)
 	}

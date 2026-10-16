@@ -1,4 +1,4 @@
-package fleet
+package hub
 
 import (
 	"bytes"
@@ -83,7 +83,7 @@ func post(ctx context.Context, collector string, body []byte, timeout time.Durat
 		return nil
 	case http.StatusBadRequest:
 		// The collector never says why; its log does.
-		return fmt.Errorf("refused (400): wrong fleet key, clocks more than %s apart, or a report too large; the collector's log says which", MaxSkew)
+		return fmt.Errorf("refused (400): wrong hub key, clocks more than %s apart, or a report too large; the collector's log says which", MaxSkew)
 	default:
 		return fmt.Errorf("answered %s: is this an lhc collector?", resp.Status)
 	}

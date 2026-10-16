@@ -52,9 +52,9 @@ schedule:
   # 0 = once a day. Otherwise whole hours, e.g. 6h runs at 00:07, 06:07,
   # 12:07 and 18:07.
   every: 0
-  # Whole fleets install the same time, so scheduled runs wait a random
-  # slice of random_window first instead of all scanning at once. A run
-  # started by hand is never delayed. Re-run `lhc install` after changing.
+  # Hosts are all installed with the same time, so scheduled runs wait a
+  # random slice of random_window first instead of all scanning at once. A
+  # run started by hand is never delayed. Re-run `lhc install` after changing.
   random: true
   random_window: 8h
 
@@ -69,23 +69,23 @@ paths:
   report_dir: ""
   log_file: ""
 
-# Fleet: after every run, send this host's report, encrypted, to one or more
+# Hub: after every run, send this host's report, encrypted, to one or more
 # collectors (hosts running `lhc collect`). Two collectors are the expected
 # setup: each keeps its own copy, so losing one loses nothing. A collector
 # that is down never stops the mail or changes the exit status.
-fleet:
+hub:
   # Empty = off. e.g. ["http://192.0.2.10:8461", "http://192.0.2.11:8461"]
   collectors: []
-  # The shared fleet key: make it once with `lhc fleet keygen` and copy the
-  # same file to every host (install.sh --fleet-key-file). Mode 0600.
-  key_file: /etc/lhc/fleet.key
+  # The shared hub key: make it once with `lhc hub keygen` and copy the
+  # same file to every host (install.sh --hub-key-file). Mode 0600.
+  key_file: /etc/lhc/hub.key
 
 # Collector: only on the hosts that receive reports. `lhc install --collector`
 # turns this on and adds the lhc-collect service. Reports land in
-# <state_dir>/fleet/<host>.json; nothing is ever sent back to a host.
+# <state_dir>/hub/<host>.json; nothing is ever sent back to a host.
 collector:
   enabled: false
-  # host:port to listen on. Open this port to the fleet in the firewall.
+  # host:port to listen on. Open it in the firewall to the hosts that report here.
   listen: ":8461"
   # Largest request, and largest report once decompressed.
   max_report_size: 1MiB

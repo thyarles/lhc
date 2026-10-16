@@ -13,10 +13,10 @@
 #   # install the binary and config only, no timer/cron entry
 #   ... | bash -s -- --no-schedule
 #
-#   # fleet: copy the shared key in; --collector also runs `lhc collect`
-#   ... | bash -s -- --fleet-key-file ./fleet.key \
-#       --set fleet.collectors=http://192.0.2.10:8461,http://192.0.2.11:8461
-#   ... | bash -s -- --fleet-key-file ./fleet.key --collector
+#   # hub: copy the shared key in; --collector also runs `lhc collect`
+#   ... | bash -s -- --hub-key-file ./hub.key \
+#       --set hub.collectors=http://192.0.2.10:8461,http://192.0.2.11:8461
+#   ... | bash -s -- --hub-key-file ./hub.key --collector
 #
 # What it does: downloads lhc_linux_<arch>.tar.gz and checksums.txt from the
 # GitHub release, verifies the SHA-256, installs /usr/local/bin/lhc, creates
@@ -42,7 +42,7 @@ TAG=""
 SETS=()
 SCHED=()
 SCHEDULE=1
-FLEET_KEY=""
+HUB_KEY=""
 while [ $# -gt 0 ]; do
     case "$1" in
         -h|--help) sed -n '2,32p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -53,9 +53,9 @@ while [ $# -gt 0 ]; do
         --time=*|--every=*|--backend=*) SCHED+=("$1") ;;
         --no-random)   SCHED+=("--no-random") ;;
         --collector)   SCHED+=("--collector") ;;
-        --fleet-key-file)
-                   shift; [ $# -gt 0 ] || die "--fleet-key-file needs a file"; FLEET_KEY="$1" ;;
-        --fleet-key-file=*) FLEET_KEY="${1#--fleet-key-file=}" ;;
+        --hub-key-file)
+                   shift; [ $# -gt 0 ] || die "--hub-key-file needs a file"; HUB_KEY="$1" ;;
+        --hub-key-file=*) HUB_KEY="${1#--hub-key-file=}" ;;
         --no-schedule) SCHEDULE=0 ;;
         -*) die "unknown option '$1' (see --help)" ;;
         *)  [ -z "$TAG" ] || die "two versions given: '$TAG' and '$1'"; TAG="$1" ;;
@@ -145,11 +145,11 @@ if [ ${#SETS[@]} -gt 0 ]; then
     "$BIN_DIR/lhc" config set --config "$CONF" "${SETS[@]}"
 fi
 
-if [ -n "$FLEET_KEY" ]; then
+if [ -n "$HUB_KEY" ]; then
     # A file, never a --set value: the key would land in shell history.
-    [ -f "$FLEET_KEY" ] || die "--fleet-key-file: $FLEET_KEY is not a file"
-    say "Installing the fleet key as /etc/lhc/fleet.key"
-    install -m 0600 -o root -g root "$FLEET_KEY" /etc/lhc/fleet.key
+    [ -f "$HUB_KEY" ] || die "--hub-key-file: $HUB_KEY is not a file"
+    say "Installing the hub key as /etc/lhc/hub.key"
+    install -m 0600 -o root -g root "$HUB_KEY" /etc/lhc/hub.key
 fi
 
 if [ "$SCHEDULE" -eq 1 ]; then

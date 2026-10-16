@@ -1,10 +1,10 @@
-// Package fleet carries reports from hosts to collectors: the shared key,
+// Package hub carries reports from hosts to collectors: the shared key,
 // the encrypted envelope, the sender that runs after every `lhc run`, and
 // the receiver and store behind `lhc collect`.
 //
 // Data flows one way. A collector answers 204 or 400 with an empty body and
 // never sends anything else back, so a host never acts on what it hears.
-package fleet
+package hub
 
 import (
 	"crypto/rand"
@@ -49,10 +49,10 @@ func LoadKey(path string) ([]byte, error) {
 func ParseKey(b []byte) ([]byte, error) {
 	k, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(b)))
 	if err != nil {
-		return nil, errors.New("the fleet key is not base64 (make one with `lhc fleet keygen`)")
+		return nil, errors.New("the hub key is not base64 (make one with `lhc hub keygen`)")
 	}
 	if len(k) != KeySize {
-		return nil, fmt.Errorf("the fleet key is %d bytes, want %d (make one with `lhc fleet keygen`)", len(k), KeySize)
+		return nil, fmt.Errorf("the hub key is %d bytes, want %d (make one with `lhc hub keygen`)", len(k), KeySize)
 	}
 	return k, nil
 }

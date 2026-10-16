@@ -10,26 +10,26 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thyarles/lhc/internal/fleet"
+	"github.com/thyarles/lhc/internal/hub"
 )
 
-func newFleetCmd(a *app) *cobra.Command {
+func newHubCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "fleet",
-		Short: "Fleet key and the collector's view of the fleet",
+		Use:   "hub",
+		Short: "Hub key and what a collector has received",
 		Args:  cobra.NoArgs,
 	}
-	cmd.AddCommand(newFleetKeygenCmd(a), newFleetStatusCmd(a), newFleetForgetCmd(a))
+	cmd.AddCommand(newHubKeygenCmd(a), newHubStatusCmd(a), newHubForgetCmd(a))
 	return cmd
 }
 
-func newFleetKeygenCmd(a *app) *cobra.Command {
+func newHubKeygenCmd(a *app) *cobra.Command {
 	var out string
 	cmd := &cobra.Command{
 		Use:   "keygen",
-		Short: "Write a new fleet key (once per fleet; copy the same file to every host)",
-		Long: `Write 32 random bytes, base64, to fleet.key_file (or --out), mode 0600.
-Every host and collector of the fleet needs this same file. An existing
+		Short: "Write a new hub key (once per hub; copy the same file to every host)",
+		Long: `Write 32 random bytes, base64, to hub.key_file (or --out), mode 0600.
+Every host and collector of the hub needs this same file. An existing
 file is never overwritten: a new key cuts off every host still holding the
 old one.`,
 		Args: cobra.NoArgs,
@@ -38,9 +38,9 @@ old one.`,
 				if err := a.load(); err != nil {
 					return err
 				}
-				out = a.cfg.Fleet.KeyFile
+				out = a.cfg.Hub.KeyFile
 			}
-			key, err := fleet.NewKey()
+			key, err := hub.NewKey()
 			if err != nil {
 				return err
 			}
@@ -49,7 +49,7 @@ old one.`,
 			}
 			f, err := os.OpenFile(out, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 			if errors.Is(err, os.ErrExist) {
-				return fmt.Errorf("%s already exists; remove it first if you really mean to replace the fleet's key", out)
+				return fmt.Errorf("%s already exists; remove it first if you really mean to replace the hub key", out)
 			}
 			if err != nil {
 				return err
@@ -61,16 +61,16 @@ old one.`,
 			if err := f.Close(); err != nil {
 				return err
 			}
-			a.printf("  ✓ Fleet key written to %s", out)
-			a.printf("  Copy this same file to every host and collector, e.g. install.sh --fleet-key-file %s", out)
+			a.printf("  ✓ Hub key written to %s", out)
+			a.printf("  Copy this same file to every host and collector, e.g. install.sh --hub-key-file %s", out)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&out, "out", "", "file to write (default: fleet.key_file)")
+	cmd.Flags().StringVar(&out, "out", "", "file to write (default: hub.key_file)")
 	return cmd
 }
 
-func newFleetStatusCmd(a *app) *cobra.Command {
+func newHubStatusCmd(a *app) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "List the hosts this collector has heard from, newest report per host",
@@ -79,7 +79,7 @@ func newFleetStatusCmd(a *app) *cobra.Command {
 			if err := a.load(); err != nil {
 				return err
 			}
-			store := fleet.Store{Dir: filepath.Join(a.paths.State, "fleet")}
+			store := hub.Store{Dir: filepath.Join(a.paths.State, "hub")}
 			entries, err := store.List()
 			if err != nil {
 				return err
@@ -106,7 +106,7 @@ func newFleetStatusCmd(a *app) *cobra.Command {
 	}
 }
 
-func newFleetForgetCmd(a *app) *cobra.Command {
+func newHubForgetCmd(a *app) *cobra.Command {
 	return &cobra.Command{
 		Use:   "forget HOST",
 		Short: "Remove a decommissioned host from this collector",
@@ -115,7 +115,7 @@ func newFleetForgetCmd(a *app) *cobra.Command {
 			if err := a.load(); err != nil {
 				return err
 			}
-			if err := (fleet.Store{Dir: filepath.Join(a.paths.State, "fleet")}).Forget(args[0]); err != nil {
+			if err := (hub.Store{Dir: filepath.Join(a.paths.State, "hub")}).Forget(args[0]); err != nil {
 				return err
 			}
 			a.printf("  ✓ Forgot %s. If it reports again, it comes back.", args[0])

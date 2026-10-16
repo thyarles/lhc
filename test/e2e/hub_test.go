@@ -54,11 +54,11 @@ func freeAddr(t *testing.T) string {
 	return addr
 }
 
-// keygen writes a fleet key with the binary itself.
+// keygen writes a hub key with the binary itself.
 func keygen(t *testing.T, h *host) string {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "fleet.key")
-	h.run(0, "fleet", "keygen", "--out", p)
+	p := filepath.Join(t.TempDir(), "hub.key")
+	h.run(0, "hub", "keygen", "--out", p)
 	return p
 }
 
@@ -66,7 +66,7 @@ func keygen(t *testing.T, h *host) string {
 func startCollector(t *testing.T, h *host, key string) *collector {
 	t.Helper()
 	addr := freeAddr(t)
-	h.run(0, "config", "set", "collector.enabled=true", "collector.listen="+addr, "fleet.key_file="+key)
+	h.run(0, "config", "set", "collector.enabled=true", "collector.listen="+addr, "hub.key_file="+key)
 	c := &collector{host: h, url: "http://" + addr, log: &syncBuffer{}}
 	cmd := exec.Command(binary, "collect", "--config", h.cfg)
 	cmd.Stdout, cmd.Stderr = c.log, c.log
@@ -102,7 +102,7 @@ func startCollector(t *testing.T, h *host, key string) *collector {
 // stored is the report a collector keeps for one host, or nil.
 func (c *collector) stored(t *testing.T, host string) map[string]any {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(c.state, "fleet", host+".json"))
+	b, err := os.ReadFile(filepath.Join(c.state, "hub", host+".json"))
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -118,11 +118,11 @@ func (c *collector) stored(t *testing.T, host string) map[string]any {
 	return st.Report
 }
 
-// fleetHost is a host that sends to the given collectors.
-func fleetHost(t *testing.T, name, key string, collectors ...string) *host {
+// hubHost is a host that sends to the given collectors.
+func hubHost(t *testing.T, name, key string, collectors ...string) *host {
 	t.Helper()
 	h := newHost(t, relay(t))
-	h.run(0, "config", "set", "hostname="+name, "fleet.key_file="+key, "fleet.collectors="+strings.Join(collectors, ","))
+	h.run(0, "config", "set", "hostname="+name, "hub.key_file="+key, "hub.collectors="+strings.Join(collectors, ","))
 	return h
 }
 
@@ -133,9 +133,9 @@ func TestEveryCollectorStoresEveryHost(t *testing.T) {
 	col2 := startCollector(t, newHost(t, relay(t)), key)
 
 	for _, name := range []string{"a.example.com", "b.example.com"} {
-		h := fleetHost(t, name, key, col1.url, col2.url)
+		h := hubHost(t, name, key, col1.url, col2.url)
 		h.run(0, "run")
-		if !strings.Contains(h.stderr, "Fleet: 2 of 2 collector(s) accepted the report") {
+		if !strings.Contains(h.stderr, "Hub: 2 of 2 collector(s) accepted the report") {
 			t.Fatalf("%s:\n%s", name, h.stderr)
 		}
 		if len(h.relay.Messages()) != 1 {
@@ -153,14 +153,14 @@ func TestEveryCollectorStoresEveryHost(t *testing.T) {
 			}
 		}
 	}
-	col1.run(0, "fleet", "status")
+	col1.run(0, "hub", "status")
 	for _, want := range []string{"HOST", "a.example.com", "b.example.com", "unhealthy", "just now"} {
 		if !strings.Contains(col1.stdout, want) {
-			t.Fatalf("fleet status lacks %q:\n%s", want, col1.stdout)
+			t.Fatalf("hub status lacks %q:\n%s", want, col1.stdout)
 		}
 	}
-	col1.run(0, "fleet", "forget", "a.example.com")
-	col1.run(0, "fleet", "status")
+	col1.run(0, "hub", "forget", "a.example.com")
+	col1.run(0, "hub", "status")
 	if strings.Contains(col1.stdout, "a.example.com") {
 		t.Fatalf("forgotten host still listed:\n%s", col1.stdout)
 	}
@@ -169,12 +169,12 @@ func TestEveryCollectorStoresEveryHost(t *testing.T) {
 func TestAWrongKeyIsRefused(t *testing.T) {
 	c := newHost(t, relay(t))
 	col := startCollector(t, c, keygen(t, c))
-	h := fleetHost(t, "a.example.com", keygen(t, c), col.url)
+	h := hubHost(t, "a.example.com", keygen(t, c), col.url)
 	h.run(0, "run")
 	if col.stored(t, "a.example.com") != nil {
 		t.Fatal("stored a report sealed with another key")
 	}
-	if !strings.Contains(col.log.String(), "does not decrypt") || !strings.Contains(h.stderr, "refused (400): wrong fleet key") {
+	if !strings.Contains(col.log.String(), "does not decrypt") || !strings.Contains(h.stderr, "refused (400): wrong hub key") {
 		t.Fatalf("collector:\n%s\nhost:\n%s", col.log, h.stderr)
 	}
 }
@@ -191,7 +191,7 @@ func TestAReplayedRequestIsRefused(t *testing.T) {
 	c := newHost(t, relay(t))
 	key := keygen(t, c)
 	col := startCollector(t, c, key)
-	fleetHost(t, "a.example.com", key, recorder.URL).run(0, "run")
+	hubHost(t, "a.example.com", key, recorder.URL).run(0, "run")
 	if len(captured) == 0 {
 		t.Fatal("nothing was sent")
 	}
@@ -216,12 +216,12 @@ func TestOneCollectorDownStillDeliversToTheOther(t *testing.T) {
 	key := keygen(t, c)
 	col := startCollector(t, c, key)
 	down := "http://" + freeAddr(t)
-	h := fleetHost(t, "a.example.com", key, down, col.url)
+	h := hubHost(t, "a.example.com", key, down, col.url)
 	h.run(0, "run")
 	if col.stored(t, "a.example.com") == nil {
 		t.Fatalf("the live collector got nothing:\n%s", h.stderr)
 	}
-	if !strings.Contains(h.stderr, "! Collector "+down+" not reached") || !strings.Contains(h.stderr, "Fleet: 1 of 2") {
+	if !strings.Contains(h.stderr, "! Collector "+down+" not reached") || !strings.Contains(h.stderr, "Hub: 1 of 2") {
 		t.Fatalf("stderr:\n%s", h.stderr)
 	}
 }
@@ -256,7 +256,7 @@ func TestADryRunAndAReportSendNothing(t *testing.T) {
 	}))
 	defer recorder.Close()
 	c := newHost(t, relay(t))
-	h := fleetHost(t, "a.example.com", keygen(t, c), recorder.URL)
+	h := hubHost(t, "a.example.com", keygen(t, c), recorder.URL)
 	h.run(0, "run", "--dry-run")
 	h.run(0, "report")
 	mu.Lock()
@@ -270,7 +270,7 @@ func TestKeygenNeverOverwrites(t *testing.T) {
 	h := newHost(t, relay(t))
 	p := keygen(t, h)
 	before, _ := os.ReadFile(p)
-	h.run(1, "fleet", "keygen", "--out", p)
+	h.run(1, "hub", "keygen", "--out", p)
 	after, _ := os.ReadFile(p)
 	if !bytes.Equal(before, after) || !strings.Contains(h.stderr, "already exists") {
 		t.Fatalf("stderr: %s", h.stderr)
@@ -282,7 +282,7 @@ func TestKeygenNeverOverwrites(t *testing.T) {
 
 func TestACollectorMustBeEnabled(t *testing.T) {
 	h := newHost(t, relay(t))
-	h.run(0, "config", "set", "fleet.key_file="+keygen(t, h))
+	h.run(0, "config", "set", "hub.key_file="+keygen(t, h))
 	h.run(1, "collect")
 	if !strings.Contains(h.stderr, "collector.enabled is false") {
 		t.Fatalf("stderr: %s", h.stderr)
