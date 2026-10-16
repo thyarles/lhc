@@ -86,12 +86,49 @@ func TestValidation(t *testing.T) {
 		"schedule:\n  every: 90m\n",
 		"schedule:\n  random_window: soon\n",
 		"checks:\n  cpu:\n    caution: 99\n",
+		"hub:\n  collectors: [192.0.2.10:8461]\n",
+		"hub:\n  collectors: [\"ftp://192.0.2.10:8461\"]\n",
+		"hub:\n  collectors: [\"http://192.0.2.10:8461/v1/report\"]\n",
+		"hub:\n  collectors: [\"http://192.0.2.10:8461\"]\n  key_file: \"\"\n",
+		"collector:\n  listen: \"8461\"\n",
+		"collector:\n  max_report_size: 1KiB\n",
+		"collector:\n  max_report_size: lots\n",
 	} {
 		c, err := config.Parse([]byte(bad))
 		if err == nil {
 			err = c.Validate()
 		}
 		if err == nil {
+			t.Errorf("accepted %q", bad)
+		}
+	}
+}
+
+func TestTheHubIsOffByDefault(t *testing.T) {
+	c := config.Default()
+	if len(c.Hub.Collectors) != 0 || c.Collector.Enabled || c.Collector.Listen != ":8461" || c.Collector.MaxReportSize != 1<<20 {
+		t.Fatalf("%+v %+v", c.Hub, c.Collector)
+	}
+	c, err := config.Parse([]byte("hub:\n  collectors: [\"http://192.0.2.10:8461\", \"https://collector.example.com:8461/\"]\ncollector:\n  max_report_size: 2MiB\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if c.Collector.MaxReportSize != 2<<20 || c.Collector.MaxReportSize.String() != "2MiB" {
+		t.Fatal(c.Collector.MaxReportSize)
+	}
+}
+
+func TestParseSize(t *testing.T) {
+	for in, want := range map[string]config.Size{"1MiB": 1 << 20, "512KiB": 512 << 10, "2MB": 2e6, "65536": 65536, "1 GiB": 1 << 30} {
+		if got, err := config.ParseSize(in); err != nil || got != want {
+			t.Errorf("%q: %d %v", in, got, err)
+		}
+	}
+	for _, bad := range []string{"", "1TB", "-1", "1.5MiB", "MiB"} {
+		if _, err := config.ParseSize(bad); err == nil {
 			t.Errorf("accepted %q", bad)
 		}
 	}

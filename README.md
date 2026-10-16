@@ -101,6 +101,10 @@ lhc uninstall                 # remove the timer/cron entry, keep everything els
 lhc tools [--install]         # which helper tools are missing
 lhc paths                     # where the config, state, reports and log live
 lhc serve                     # foreground scheduler, for hosts with neither systemd nor cron
+
+lhc hub keygen              # once per hub: the shared key for collectors
+lhc hub status              # on a collector: every host's latest report and its age
+lhc hub forget HOST         # on a collector: drop a decommissioned host
 ```
 
 `lhc report` and `lhc run --dry-run` never touch the saved baselines, so a
@@ -131,8 +135,8 @@ schedule:
   random_window: 8h          # each run starts at a random moment in this window
 ```
 
-**Why the random window?** A fleet installs the same time, so every host
-would start scanning at 00:07, often on top of the backups, and then report
+**Why the random window?** Hosts are all installed with the same time, so
+every one would start scanning at 00:07, often on top of the backups, and then report
 the CPU spike it caused itself. Each scheduled run waits a random slice of
 the window first (systemd's `RandomizedDelaySec`, or the same thing in
 process under cron). A run you start by hand is never delayed.
@@ -160,6 +164,44 @@ delivered run, finds the same changes and tries again. A relay that answers
 An interrupted run (Ctrl+C, or the service stopped mid-run) prints, sends
 and saves nothing.
 
+## Hub
+
+With many hosts, one mail per host per day stops being read, and a host that
+stops reporting is invisible among the rest. Hosts can also send their report
+to **collectors**: ordinary lhc hosts that also run `lhc collect` and keep the
+latest report of every host in `/var/lib/lhc/hub/`.
+
+```sh
+# once, anywhere: the hub's shared key
+lhc hub keygen --out ./hub.key
+
+# on each of the two collectors (systemd needed)
+curl -fsSL .../install.sh | bash -s -- --hub-key-file ./hub.key --collector
+
+# on every host, collectors included
+curl -fsSL .../install.sh | bash -s -- --hub-key-file ./hub.key \
+    --set hub.collectors=http://192.0.2.10:8461,http://192.0.2.11:8461
+```
+
+- **Two collectors** are the expected setup. Each host sends to every one,
+  and each collector is independent, so losing one loses nothing.
+- **Separate networks.** Where VLANs must not talk to each other, give each
+  VLAN its own pair of collectors and list only those on its hosts.
+- **One way only.** A collector answers `POST /v1/report` with 204 or an
+  empty 400, and 404 to anything else. It never sends a host anything to act
+  on.
+- **Encrypted end to end.** Each report is gzipped and sealed with AES-256-GCM
+  under the shared key, with the host name and the time bound to it. Plain
+  HTTP is therefore enough. Without the key a report can be neither read nor
+  forged, a recorded request cannot be replayed, and a clock more than 10
+  minutes off is refused.
+- **Never in the way.** The report goes to the collectors after the mail,
+  10 seconds at most for each. A collector that is down is logged, and the
+  run's exit status and its mail stay the same.
+- A refusal's reason is only in the collector's journal:
+  `journalctl -u lhc-collect`.
+- Open port 8461/tcp on the collectors to the hosts that report to them.
+
 ## Files
 
 | | root | user |
@@ -168,6 +210,8 @@ and saves nothing.
 | state (baselines, alert history) | `/var/lib/lhc/*.json` | `~/.local/state/lhc/` |
 | saved reports (`reports.keep`, default 30) | `/var/lib/lhc/reports/` | `~/.local/state/lhc/reports/` |
 | log of scheduled runs | `/var/log/lhc.log` | `~/.local/state/lhc/lhc.log` |
+| hub key | `/etc/lhc/hub.key` (`hub.key_file`) | |
+| collector: latest report per host | `/var/lib/lhc/hub/<host>.json` | |
 
 ## Moving from the Python version
 

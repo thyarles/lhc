@@ -30,7 +30,7 @@ check: test lint vuln deps  ## Everything CI runs
 	@echo "  All checks passed."
 
 e2e:  ## End-to-end test: real binary, fake commands, fake SMTP relay
-	go test -race -tags e2e ./test/e2e/...
+	go test -race -count=1 -tags e2e ./test/e2e/...
 
 report: build  ## Preview the report on this machine (no mail, no state change)
 	./$(BIN) report

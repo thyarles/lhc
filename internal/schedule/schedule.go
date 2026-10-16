@@ -1,12 +1,12 @@
 // Package schedule spreads scheduled runs over a window and installs the
 // timer (systemd) or crontab entry that starts them.
 //
-// Every host in a fleet installs the same time, so at 00:07 every one of them
+// Every host installs with the same time, so at 00:07 every one of them
 // would start reading /proc, walking /etc and calling df, dnf and kubectl —
 // often on top of the backup window. The check then reports the CPU spike it
 // caused itself. So the schedule fires at a fixed, readable time and the RUN
 // waits a random slice of the window first; the delay is re-drawn every time,
-// and independent uniform draws are all a fleet needs to spread out.
+// and independent uniform draws are all the hosts need to spread out.
 package schedule
 
 import (
@@ -27,7 +27,7 @@ const DefaultWindow = 8 * time.Hour
 func ParseWindow(v string) (time.Duration, error) { return config.ParseDuration(v) }
 
 // Window is the configured window, or DefaultWindow — never zero — when the
-// value cannot be read. random: true says the operator wants the fleet spread
+// value cannot be read. random: true says the operator wants the hosts spread
 // out; a typo is a poor reason to send every host back to starting together.
 // The warning goes to warn (the run's log).
 func Window(raw string, warn io.Writer) time.Duration {

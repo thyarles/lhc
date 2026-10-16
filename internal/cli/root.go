@@ -63,6 +63,7 @@ the broad list only when something NEW needs attention.`,
 	root.AddCommand(
 		newRunCmd(a), newReportCmd(a), newConfigCmd(a), newInstallCmd(a), newUninstallCmd(a),
 		newServeCmd(a), newTestMailCmd(a), newToolsCmd(a), newPathsCmd(a), newVersionCmd(),
+		newCollectCmd(a), newHubCmd(a),
 	)
 	return root
 }

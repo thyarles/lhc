@@ -11,6 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
 	"os"
 	"regexp"
 	"slices"
@@ -32,13 +34,15 @@ var Example []byte
 type Config struct {
 	// Overrides the name this host calls itself in reports, subject lines
 	// and saved report files. Blank uses the kernel hostname.
-	Hostname string   `yaml:"hostname"`
-	SMTP     SMTP     `yaml:"smtp"`
-	Email    Email    `yaml:"email"`
-	Alerts   Alerts   `yaml:"alerts"`
-	Schedule Schedule `yaml:"schedule"`
-	Reports  Reports  `yaml:"reports"`
-	Paths    Paths    `yaml:"paths"`
+	Hostname  string    `yaml:"hostname"`
+	SMTP      SMTP      `yaml:"smtp"`
+	Email     Email     `yaml:"email"`
+	Alerts    Alerts    `yaml:"alerts"`
+	Schedule  Schedule  `yaml:"schedule"`
+	Reports   Reports   `yaml:"reports"`
+	Paths     Paths     `yaml:"paths"`
+	Hub       Hub       `yaml:"hub"`
+	Collector Collector `yaml:"collector"`
 	// Checks holds each registered check's decoded config, by name.
 	Checks map[string]check.Config `yaml:"-"`
 }
@@ -96,21 +100,39 @@ type Paths struct {
 	LogFile   string `yaml:"log_file"`
 }
 
+// Hub is where this host sends its report after every run.
+type Hub struct {
+	// Base URLs of the collectors, e.g. http://192.0.2.10:8461. Empty = off.
+	Collectors []string `yaml:"collectors"`
+	// The shared hub key: base64, 32 bytes, mode 0600.
+	KeyFile string `yaml:"key_file"`
+}
+
+// Collector configures `lhc collect`, on the hosts that receive reports.
+type Collector struct {
+	Enabled bool   `yaml:"enabled"`
+	Listen  string `yaml:"listen"`
+	// Largest request, and largest report once decompressed.
+	MaxReportSize Size `yaml:"max_report_size"`
+}
+
 // Default is the configuration a host runs with when its file says nothing.
 func Default() *Config {
 	c := &Config{
 		SMTP:  SMTP{Host: "relay.example.com", Port: 25, TLS: "none"},
 		Email: Email{DailyRecipients: []string{}, AlertRecipients: []string{}, HTMLMode: "inline"},
 		Alerts: Alerts{
-			// unhealthy is what the installed Python fleet actually ran.
+			// unhealthy is what the installed Python version actually ran.
 			NotifyAllOn:     "unhealthy",
 			RemindCaution:   Duration(168 * time.Hour),
 			RemindUnhealthy: Duration(24 * time.Hour),
 			ForgetAfter:     Duration(72 * time.Hour),
 		},
-		Schedule: Schedule{Time: "00:07", Random: true, RandomWindow: "8h"},
-		Reports:  Reports{Keep: 30},
-		Checks:   map[string]check.Config{},
+		Schedule:  Schedule{Time: "00:07", Random: true, RandomWindow: "8h"},
+		Reports:   Reports{Keep: 30},
+		Hub:       Hub{Collectors: []string{}, KeyFile: "/etc/lhc/hub.key"},
+		Collector: Collector{Listen: ":8461", MaxReportSize: 1 << 20},
+		Checks:    map[string]check.Config{},
 	}
 	for _, ch := range check.All() {
 		c.Checks[ch.Meta().Name] = ch.Defaults()
@@ -132,14 +154,16 @@ func (c *Config) Check(name string) check.Config {
 // file mirrors Config for decoding, with the checks block kept raw so each
 // block can be decoded into its own check's struct.
 type file struct {
-	Hostname string               `yaml:"hostname"`
-	SMTP     *SMTP                `yaml:"smtp"`
-	Email    *Email               `yaml:"email"`
-	Alerts   *Alerts              `yaml:"alerts"`
-	Schedule *Schedule            `yaml:"schedule"`
-	Reports  *Reports             `yaml:"reports"`
-	Paths    *Paths               `yaml:"paths"`
-	Checks   map[string]yaml.Node `yaml:"checks"`
+	Hostname  string               `yaml:"hostname"`
+	SMTP      *SMTP                `yaml:"smtp"`
+	Email     *Email               `yaml:"email"`
+	Alerts    *Alerts              `yaml:"alerts"`
+	Schedule  *Schedule            `yaml:"schedule"`
+	Reports   *Reports             `yaml:"reports"`
+	Paths     *Paths               `yaml:"paths"`
+	Hub       *Hub                 `yaml:"hub"`
+	Collector *Collector           `yaml:"collector"`
+	Checks    map[string]yaml.Node `yaml:"checks"`
 }
 
 // Parse decodes YAML on top of the defaults. Unknown keys are errors, so a
@@ -149,6 +173,7 @@ func Parse(b []byte) (*Config, error) {
 	f := file{
 		Hostname: c.Hostname, SMTP: &c.SMTP, Email: &c.Email, Alerts: &c.Alerts,
 		Schedule: &c.Schedule, Reports: &c.Reports, Paths: &c.Paths,
+		Hub: &c.Hub, Collector: &c.Collector,
 	}
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 	dec.KnownFields(true)
@@ -284,6 +309,20 @@ func (c *Config) Validate() error {
 	if c.Reports.Keep < 0 {
 		bad("reports.keep: must not be negative")
 	}
+	for _, u := range c.Hub.Collectors {
+		if err := collectorURL(u); err != nil {
+			bad("hub.collectors: %v", err)
+		}
+	}
+	if len(c.Hub.Collectors) > 0 && c.Hub.KeyFile == "" {
+		bad("hub.key_file: needed when hub.collectors is set")
+	}
+	if _, port, err := net.SplitHostPort(c.Collector.Listen); err != nil || port == "" {
+		bad("collector.listen: %q is not host:port, e.g. :8461", c.Collector.Listen)
+	}
+	if m := c.Collector.MaxReportSize; m < 64<<10 || m > 64<<20 {
+		bad("collector.max_report_size: %s is outside 64KiB..64MiB", m)
+	}
 	for name, cc := range c.Checks {
 		if v, ok := cc.(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
@@ -294,21 +333,33 @@ func (c *Config) Validate() error {
 	return errors.Join(errs...)
 }
 
+// collectorURL accepts http(s)://host:port with nothing after it: the
+// sender adds the path.
+func collectorURL(v string) error {
+	u, err := url.Parse(v)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || strings.Trim(u.Path, "/") != "" || u.RawQuery != "" || u.User != nil {
+		return fmt.Errorf("%q is not a collector address such as http://192.0.2.10:8461", v)
+	}
+	return nil
+}
+
 // Marshal renders the effective config, checks included, as YAML.
 func (c *Config) Marshal() ([]byte, error) {
 	type out struct {
-		Hostname string                  `yaml:"hostname"`
-		SMTP     SMTP                    `yaml:"smtp"`
-		Email    Email                   `yaml:"email"`
-		Alerts   Alerts                  `yaml:"alerts"`
-		Schedule Schedule                `yaml:"schedule"`
-		Reports  Reports                 `yaml:"reports"`
-		Paths    Paths                   `yaml:"paths"`
-		Checks   map[string]check.Config `yaml:"checks"`
+		Hostname  string                  `yaml:"hostname"`
+		SMTP      SMTP                    `yaml:"smtp"`
+		Email     Email                   `yaml:"email"`
+		Alerts    Alerts                  `yaml:"alerts"`
+		Schedule  Schedule                `yaml:"schedule"`
+		Reports   Reports                 `yaml:"reports"`
+		Paths     Paths                   `yaml:"paths"`
+		Hub       Hub                     `yaml:"hub"`
+		Collector Collector               `yaml:"collector"`
+		Checks    map[string]check.Config `yaml:"checks"`
 	}
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
-	err := enc.Encode(out{c.Hostname, c.SMTP, c.Email, c.Alerts, c.Schedule, c.Reports, c.Paths, c.Checks})
+	err := enc.Encode(out{c.Hostname, c.SMTP, c.Email, c.Alerts, c.Schedule, c.Reports, c.Paths, c.Hub, c.Collector, c.Checks})
 	return buf.Bytes(), err
 }
