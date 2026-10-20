@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/cri"
 	"github.com/thyarles/lhc/internal/runner"
 )
 
@@ -155,20 +156,35 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	// It never does: a zombie goes as soon as its parent exits, so name the
 	// parents, and say so.
 	parents := zombieParents(ctx, env.Runner)
+	parents = parents[:min(3, len(parents))]
+	// The pod is what someone acts on, and the hub digest shows only the
+	// alert: name it in both.
+	for i := range parents {
+		parents[i].pod = cri.Pod(ctx, env.Runner, parents[i].pid)
+	}
 	advice := "Restarting the parent clears them; no reboot needed."
 	if slices.ContainsFunc(parents, func(p parent) bool { return p.containerInit }) {
 		advice = "Restarting the parent's container clears them; no reboot needed. " +
 			"A container's PID 1 must reap orphans: run it under tini, or set shareProcessNamespace: true."
 	}
 	s.Add("Zombie Processes", strconv.Itoa(z), st, check.Detail(advice+" "+thresholds))
-	for _, p := range parents[:min(3, len(parents))] {
+	for _, p := range parents {
 		what := p.comm
 		if p.containerInit {
 			what += " (container PID 1)"
 		}
+		if p.pod != "" {
+			what += " · pod " + p.pod
+		}
 		s.Add("Parent PID "+p.pid, fmt.Sprintf("%d · %s", p.zombies, what), check.Info)
 	}
-	s.Alert(st, fmt.Sprintf("%d zombie processes", z))
+	msg := fmt.Sprintf("%d zombie processes", z)
+	if len(parents) > 0 {
+		if who := cmp.Or(parents[0].pod, parents[0].comm); who != "?" {
+			msg += ", most under " + who
+		}
+	}
+	s.Alert(st, msg)
 	return s
 }
 
@@ -178,6 +194,7 @@ type parent struct {
 	comm          string
 	zombies       int
 	containerInit bool
+	pod           string // namespace/name, when it runs in a pod
 }
 
 // zombieParents groups the zombies by parent, most first.
