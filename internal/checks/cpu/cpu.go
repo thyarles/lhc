@@ -171,17 +171,37 @@ func perCore(ctx context.Context, s *check.Section, env *check.Env, cfg *Config)
 		}
 		return strings.Compare(a.id, b.id)
 	})
+	// One busy core is any single-threaded process on a many-core node: it
+	// made two of twenty rke2 nodes UNHEALTHY in one digest. The same core
+	// busy on two runs in a row is something stuck processing.
+	var before []string
+	env.State.Load(busyKey, &before)
+	now := []string{}
 	for i, u := range busy {
+		now = append(now, u.id)
 		if i == listCap {
 			s.Add("…", fmt.Sprintf("and %d more core(s) above threshold", len(busy)-listCap), check.Info)
-			break
+			continue
 		}
-		if u.st == check.Unhealthy {
-			s.Alert(check.Unhealthy, fmt.Sprintf("CPU %s at %.0f%%", u.id, u.used))
+		if i > listCap {
+			continue
 		}
-		s.Add("CPU "+u.id, fmt.Sprintf("%.1f%% used", u.used), u.st, check.Meter(u.used))
+		if slices.Contains(before, u.id) {
+			s.Alert(check.Caution, fmt.Sprintf("CPU %s busy since the previous run (%.0f%%)", u.id, u.used))
+			s.Add("CPU "+u.id, fmt.Sprintf("%.1f%% used", u.used), check.Caution, check.Meter(u.used),
+				check.Detail("busy on the previous run too"))
+			continue
+		}
+		s.Add("CPU "+u.id, fmt.Sprintf("%.1f%% used", u.used), check.Info, check.Meter(u.used),
+			check.Detail("busy now; flagged if still busy on the next run"))
+	}
+	if err := env.State.Save(busyKey, now); err != nil {
+		env.Log.Warn("saving busy cores", "err", err)
 	}
 }
+
+// busyKey holds the cores at or above caution on the previous run.
+const busyKey = "busy_cores"
 
 // aggregate is the fallback without sysstat: utilisation since boot from
 // /proc/stat. Coarse, which is why the row says "approx." and asks for
