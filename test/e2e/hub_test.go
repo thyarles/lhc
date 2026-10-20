@@ -228,6 +228,69 @@ func TestOneCollectorDownStillDeliversToTheOther(t *testing.T) {
 	}
 }
 
+func TestOnlyTheReportRouteAnswers(t *testing.T) {
+	c := newHost(t, relay(t))
+	col := startCollector(t, c, keygen(t, c))
+	for _, r := range []struct{ method, path string }{
+		{http.MethodGet, "/"}, {http.MethodGet, "/v1/report"}, {http.MethodPost, "/"}, {http.MethodGet, "/debug/pprof/"},
+	} {
+		req, _ := http.NewRequest(r.method, col.url+r.path, nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound || len(body) != 0 {
+			t.Errorf("%s %s: %d %q", r.method, r.path, resp.StatusCode, body)
+		}
+	}
+}
+
+func TestADryRunAndAReportSendNothing(t *testing.T) {
+	var hits int
+	var mu sync.Mutex
+	recorder := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits++
+		mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer recorder.Close()
+	c := newHost(t, relay(t))
+	h := hubHost(t, "a.example.com", keygen(t, c), recorder.URL)
+	h.run(0, "run", "--dry-run")
+	h.run(0, "report")
+	mu.Lock()
+	defer mu.Unlock()
+	if hits != 0 {
+		t.Fatalf("%d reports sent by a preview", hits)
+	}
+}
+
+func TestKeygenNeverOverwrites(t *testing.T) {
+	h := newHost(t, relay(t))
+	p := keygen(t, h)
+	before, _ := os.ReadFile(p)
+	h.run(1, "hub", "keygen", "--out", p)
+	after, _ := os.ReadFile(p)
+	if !bytes.Equal(before, after) || !strings.Contains(h.stderr, "already exists") {
+		t.Fatalf("stderr: %s", h.stderr)
+	}
+	if fi, _ := os.Stat(p); fi.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %v", fi.Mode().Perm())
+	}
+}
+
+func TestACollectorMustBeEnabled(t *testing.T) {
+	h := newHost(t, relay(t))
+	h.run(0, "config", "set", "hub.key_file="+keygen(t, h))
+	h.run(1, "collect")
+	if !strings.Contains(h.stderr, "collector.enabled is false") {
+		t.Fatalf("stderr: %s", h.stderr)
+	}
+}
+
 // subject is a relayed message's decoded Subject line.
 func subject(t *testing.T, data string) string {
 	t.Helper()
@@ -297,68 +360,5 @@ func TestADigestWithNoReportsSaysSo(t *testing.T) {
 	h.run(1, "hub", "digest", "--dry-run")
 	if !strings.Contains(h.stderr, "no reports yet") {
 		t.Fatalf("stderr:\n%s", h.stderr)
-	}
-}
-
-func TestOnlyTheReportRouteAnswers(t *testing.T) {
-	c := newHost(t, relay(t))
-	col := startCollector(t, c, keygen(t, c))
-	for _, r := range []struct{ method, path string }{
-		{http.MethodGet, "/"}, {http.MethodGet, "/v1/report"}, {http.MethodPost, "/"}, {http.MethodGet, "/debug/pprof/"},
-	} {
-		req, _ := http.NewRequest(r.method, col.url+r.path, nil)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		body, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if resp.StatusCode != http.StatusNotFound || len(body) != 0 {
-			t.Errorf("%s %s: %d %q", r.method, r.path, resp.StatusCode, body)
-		}
-	}
-}
-
-func TestADryRunAndAReportSendNothing(t *testing.T) {
-	var hits int
-	var mu sync.Mutex
-	recorder := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		hits++
-		mu.Unlock()
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer recorder.Close()
-	c := newHost(t, relay(t))
-	h := hubHost(t, "a.example.com", keygen(t, c), recorder.URL)
-	h.run(0, "run", "--dry-run")
-	h.run(0, "report")
-	mu.Lock()
-	defer mu.Unlock()
-	if hits != 0 {
-		t.Fatalf("%d reports sent by a preview", hits)
-	}
-}
-
-func TestKeygenNeverOverwrites(t *testing.T) {
-	h := newHost(t, relay(t))
-	p := keygen(t, h)
-	before, _ := os.ReadFile(p)
-	h.run(1, "hub", "keygen", "--out", p)
-	after, _ := os.ReadFile(p)
-	if !bytes.Equal(before, after) || !strings.Contains(h.stderr, "already exists") {
-		t.Fatalf("stderr: %s", h.stderr)
-	}
-	if fi, _ := os.Stat(p); fi.Mode().Perm() != 0o600 {
-		t.Fatalf("mode %v", fi.Mode().Perm())
-	}
-}
-
-func TestACollectorMustBeEnabled(t *testing.T) {
-	h := newHost(t, relay(t))
-	h.run(0, "config", "set", "hub.key_file="+keygen(t, h))
-	h.run(1, "collect")
-	if !strings.Contains(h.stderr, "collector.enabled is false") {
-		t.Fatalf("stderr: %s", h.stderr)
 	}
 }
