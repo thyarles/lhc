@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 func init() { check.Register(Check{}) }
@@ -28,7 +29,30 @@ const (
 	notSystemd    = "systemd not available on this system"
 	activatingKey = "activating"
 	activatingCap = 5
+	cgroupFile    = "/proc/self/cgroup"
 )
+
+// ownUnit is the systemd service lhc itself runs in, from /proc/self/cgroup:
+// "0::/system.slice/lhc.service" on cgroup v2, "1:name=systemd:/..." on v1.
+// A oneshot unit is "activating" for as long as its command runs, so without
+// this the scheduled run would see itself stuck on every run after the
+// first. Blank when lhc is not in a service (a shell, cron, a container).
+func ownUnit(r runner.Runner) string {
+	b, err := r.ReadFile(cgroupFile)
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		p := strings.SplitN(line, ":", 3)
+		if len(p) != 3 || (p[1] != "" && p[1] != "name=systemd") {
+			continue
+		}
+		if unit := p[2][strings.LastIndex(p[2], "/")+1:]; strings.HasSuffix(unit, ".service") {
+			return unit
+		}
+	}
+	return ""
+}
 
 // noSystemd recognises a systemctl that exists but has no systemd to talk
 // to: containers, WSL without systemd, chroots. That is an absent subsystem,
@@ -117,7 +141,11 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	// the previous run too, so compare against the last snapshot.
 	out := r.Run(ctx, "systemctl", "list-units", "--state=activating", "--no-legend", "--no-pager").Stdout
 	activating := []string{}
+	self := ownUnit(r)
 	for _, p := range units(out) {
+		if p[0] == self {
+			continue
+		}
 		if len(activating) == activatingCap {
 			break
 		}
