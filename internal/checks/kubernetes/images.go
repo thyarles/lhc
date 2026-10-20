@@ -6,19 +6,16 @@ import (
 	"strings"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/cri"
 	"github.com/thyarles/lhc/internal/runner"
 )
 
 func imageRows(ctx context.Context, s *check.Section, env *check.Env, cfg *Config) {
-	crictl := crictlBin(env.Runner)
+	crictl := cri.Bin(env.Runner)
 	if crictl == "" {
 		return // a node without crictl is not a defect: say nothing
 	}
-	var args []string
-	if sock := criSocket(env.Runner); sock != "" {
-		args = append(args, "--runtime-endpoint", "unix://"+sock)
-	}
-	args = append(args, "images")
+	args := cri.Args(env.Runner, "images")
 
 	ctx, cancel := runner.WithTimeout(ctx, crictlTimeout)
 	defer cancel()

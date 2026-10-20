@@ -196,8 +196,39 @@ func TestZombieParentsAndTheRemedyAreNamed(t *testing.T) {
 	if got := rows["Parent PID 880"].Value; got != "5 · bash" {
 		t.Fatalf("second parent %q", got)
 	}
-	// The alert's text is its identity in the alert history: unchanged.
-	if got := s.AlertMsgs(); !slices.Equal(got, []string{"60 zombie processes"}) {
+	if got := s.AlertMsgs(); !slices.Equal(got, []string{"60 zombie processes, most under consumer"}) {
+		t.Fatalf("alerts %q", got)
+	}
+}
+
+// 12 of 20 rke2 nodes had zombies under s3driver. Which pod that was took a
+// crictl loop by hand on each node; the hub digest shows only the alert.
+func TestTheZombieParentsPodIsNamed(t *testing.T) {
+	const id = "4f1d0c3b9a8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a392817060000"
+	e := checktest.NewEnv(t, Check{}, nil)
+	e.Fake.Tool("crictl").Socket("/run/k3s/containerd/containerd.sock")
+	e.Fake.Expect("ps aux", withZombies(2304))
+	e.Fake.Expect("ps -e -o ppid=,stat=", strings.Repeat("8674 Z\n", 2304))
+	e.Fake.File("/proc/8674/comm", "s3driver\n")
+	e.Fake.File("/proc/8674/status", "Name:\ts3driver\nNSpid:\t8674\t1\n")
+	e.Fake.File("/proc/8674/cgroup", "0::/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-pod1a2b3c4d_5e6f_7a8b_9c0d_1e2f3a4b5c6d.slice/cri-containerd-"+id+".scope\n")
+	e.Fake.Expect("--runtime-endpoint unix:///run/k3s/containerd/containerd.sock inspect "+id,
+		`{"status":{"id":"`+id+`","labels":{"io.kubernetes.container.name":"csi-s3","io.kubernetes.pod.name":"csi-s3-66l84","io.kubernetes.pod.namespace":"infra-datashim"}}}`)
+	s := e.Run(Check{})
+
+	if got := checktest.Rows(s)["Parent PID 8674"].Value; got != "2304 · s3driver (container PID 1) · pod infra-datashim/csi-s3-66l84" {
+		t.Fatalf("parent %q", got)
+	}
+	if got := s.AlertMsgs(); !slices.Equal(got, []string{"2304 zombie processes, most under infra-datashim/csi-s3-66l84"}) {
+		t.Fatalf("alerts %q", got)
+	}
+}
+
+func TestAParentWithNoKnownCommandIsNotNamed(t *testing.T) {
+	e := checktest.NewEnv(t, Check{}, nil)
+	e.Fake.Expect("ps aux", withZombies(12))
+	e.Fake.Expect("ps -e -o ppid=,stat=", strings.Repeat("4242 Z\n", 12))
+	if got := e.Run(Check{}).AlertMsgs(); !slices.Equal(got, []string{"12 zombie processes"}) {
 		t.Fatalf("alerts %q", got)
 	}
 }

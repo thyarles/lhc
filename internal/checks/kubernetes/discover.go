@@ -24,22 +24,6 @@ var kubectlPaths = []string{
 	"/snap/bin/kubectl",
 }
 
-// Same story for crictl. On k3s/rke2 it is a symlink to the server binary
-// that dispatches on argv[0].
-var crictlPaths = []string{
-	"/var/lib/rancher/rke2/bin/crictl",
-	"/usr/local/bin/crictl",
-	"/usr/bin/crictl",
-	"/opt/bin/crictl",
-}
-
-// rke2 keeps k3s's containerd socket path.
-var criSockets = []string{
-	"/run/k3s/containerd/containerd.sock",
-	"/run/containerd/containerd.sock",
-	"/var/run/crio/crio.sock",
-}
-
 // Order matters: the node's own admin config beats a ~/.kube/config a human
 // copied there and forgot about.
 var kubeconfigPaths = []string{
@@ -65,8 +49,6 @@ func findTool(r runner.Runner, name string, candidates []string) string {
 
 func kubectlBin(r runner.Runner) string { return findTool(r, "kubectl", kubectlPaths) }
 
-func crictlBin(r runner.Runner) string { return findTool(r, "crictl", crictlPaths) }
-
 // kubeconfigPath is the first readable candidate. Readable, not merely
 // present: an unreadable kubeconfig is a permanent condition, never a daily
 // CAUTION.
@@ -79,15 +61,6 @@ func kubeconfigPath(r runner.Runner, explicit string) string {
 	for _, c := range cands {
 		if c != "" && r.Readable(c) {
 			return c
-		}
-	}
-	return ""
-}
-
-func criSocket(r runner.Runner) string {
-	for _, s := range criSockets {
-		if r.IsSocket(s) {
-			return s
 		}
 	}
 	return ""
