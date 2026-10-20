@@ -155,3 +155,48 @@ func TestBrokenBusOnASystemdHostIsNotHidden(t *testing.T) {
 	}
 	checktest.NoAlerts(t, s)
 }
+
+func TestTheUnitLhcRunsInIsNeverStuck(t *testing.T) {
+	for name, cgroup := range map[string]string{
+		"cgroup v2": "0::/system.slice/lhc.service\n",
+		"cgroup v1": "11:memory:/system.slice/lhc.service\n1:name=systemd:/system.slice/lhc.service\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t)
+			e.Fake.File("/proc/self/cgroup", cgroup)
+			e.Seed(t, activatingKey, []string{"lhc.service", "wsl-pro.service"})
+			e.Fake.Expect("--state=activating", "lhc.service loaded activating start\nwsl-pro.service loaded activating start")
+			s := e.Run(Check{})
+			if got := s.AlertMsgs(); !slices.Equal(got, []string{"Service wsl-pro.service stuck activating"}) {
+				t.Fatalf("alerts %q", got)
+			}
+			if _, ok := checktest.Rows(s)["lhc.service"]; ok {
+				t.Fatal("lhc.service has a row")
+			}
+			var saved []string
+			if !e.Loaded(t, activatingKey, &saved) || !slices.Equal(saved, []string{"wsl-pro.service"}) {
+				t.Fatalf("saved %v", saved)
+			}
+		})
+	}
+}
+
+func TestLhcServiceSeenFromOutsideIsStillReported(t *testing.T) {
+	for name, cgroup := range map[string]string{
+		"no cgroup file": "",
+		"a login shell":  "0::/user.slice/user-0.slice/session-4.scope\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t)
+			if cgroup != "" {
+				e.Fake.File("/proc/self/cgroup", cgroup)
+			}
+			e.Seed(t, activatingKey, []string{"lhc.service"})
+			e.Fake.Expect("--state=activating", "lhc.service loaded activating start")
+			s := e.Run(Check{})
+			if got := s.AlertMsgs(); !slices.Equal(got, []string{"Service lhc.service stuck activating"}) {
+				t.Fatalf("alerts %q", got)
+			}
+		})
+	}
+}
