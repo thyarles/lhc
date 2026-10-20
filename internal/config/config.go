@@ -66,6 +66,9 @@ type Email struct {
 	AlertRecipients []string `yaml:"alert_recipients"`
 	// inline | attachment | both
 	HTMLMode string `yaml:"html_mode"`
+	// always | auto | never: when the daily list gets a run with nothing to
+	// alert about. auto skips it when a hub collector accepted the report.
+	Heartbeat string `yaml:"heartbeat"`
 }
 
 type Alerts struct {
@@ -120,7 +123,7 @@ type Collector struct {
 func Default() *Config {
 	c := &Config{
 		SMTP:  SMTP{Host: "relay.example.com", Port: 25, TLS: "none"},
-		Email: Email{DailyRecipients: []string{}, AlertRecipients: []string{}, HTMLMode: "inline"},
+		Email: Email{DailyRecipients: []string{}, AlertRecipients: []string{}, HTMLMode: "inline", Heartbeat: "auto"},
 		Alerts: Alerts{
 			// unhealthy is what the installed Python version actually ran.
 			NotifyAllOn:     "unhealthy",
@@ -279,6 +282,11 @@ func (c *Config) Validate() error {
 	case "inline", "attachment", "both":
 	default:
 		bad("email.html_mode: %q is not one of inline, attachment, both", c.Email.HTMLMode)
+	}
+	switch c.Email.Heartbeat {
+	case "always", "auto", "never":
+	default:
+		bad("email.heartbeat: %q is not one of always, auto, never", c.Email.Heartbeat)
 	}
 	for _, list := range []struct {
 		key  string

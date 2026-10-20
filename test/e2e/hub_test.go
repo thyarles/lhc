@@ -226,6 +226,74 @@ func TestOneCollectorDownStillDeliversToTheOther(t *testing.T) {
 	}
 }
 
+// The first run is a new UNHEALTHY finding (an alert), the second the same
+// condition again (a heartbeat).
+func TestAHeartbeatTheHubHoldsIsNotMailed(t *testing.T) {
+	c := newHost(t, relay(t))
+	key := keygen(t, c)
+	col := startCollector(t, c, key)
+	h := hubHost(t, "a.example.com", key, "http://"+freeAddr(t), col.url)
+
+	h.run(0, "run")
+	if msgs := h.relay.Messages(); len(msgs) != 1 || !strings.Contains(msgs[0].Data, "[ACTION]") {
+		t.Fatalf("the alert must be mailed whatever the hub did: %d message(s)\n%s", len(msgs), h.stderr)
+	}
+	h.run(0, "run")
+	if n := len(h.relay.Messages()); n != 1 {
+		t.Fatalf("heartbeat mailed although a collector holds the report: %d message(s)\n%s", n, h.stderr)
+	}
+	if !strings.Contains(h.stderr, "Heartbeat skipped — delivered to collector "+col.url) {
+		t.Fatalf("stderr:\n%s", h.stderr)
+	}
+	if rep := col.stored(t, "a.example.com"); rep == nil {
+		t.Fatal("the collector has no report")
+	}
+}
+
+func TestWithEveryCollectorDownTheHeartbeatIsMailed(t *testing.T) {
+	c := newHost(t, relay(t))
+	h := hubHost(t, "a.example.com", keygen(t, c), "http://"+freeAddr(t))
+	h.run(0, "run")
+	h.run(0, "run")
+	msgs := h.relay.Messages()
+	if len(msgs) != 2 || len(msgs[1].To) != 1 || msgs[1].To[0] != "ops@example.com" {
+		t.Fatalf("want the heartbeat to the daily list, got %d message(s)\n%s", len(msgs), h.stderr)
+	}
+	if strings.Contains(h.stderr, "Heartbeat skipped") {
+		t.Fatalf("stderr:\n%s", h.stderr)
+	}
+}
+
+// With no alert list the alert goes to the daily list, so it looks like a
+// heartbeat by its recipients. It is still an alert, and still mailed.
+func TestAnAlertWithoutAnAlertListIsStillMailed(t *testing.T) {
+	c := newHost(t, relay(t))
+	key := keygen(t, c)
+	col := startCollector(t, c, key)
+	h := hubHost(t, "a.example.com", key, col.url)
+	h.run(0, "config", "set", "email.alert_recipients=")
+	h.run(0, "run")
+	if msgs := h.relay.Messages(); len(msgs) != 1 || msgs[0].To[0] != "ops@example.com" {
+		t.Fatalf("want the alert to the daily list, got %d message(s)\n%s", len(msgs), h.stderr)
+	}
+}
+
+func TestHeartbeatNeverMailsOnlyAlerts(t *testing.T) {
+	h := newHost(t, relay(t))
+	h.run(0, "config", "set", "email.heartbeat=never")
+	h.run(0, "run")
+	h.run(0, "run")
+	if n := len(h.relay.Messages()); n != 1 {
+		t.Fatalf("want only the alert, got %d message(s)\n%s", n, h.stderr)
+	}
+	if !strings.Contains(h.stderr, "Heartbeat skipped — email.heartbeat is never") {
+		t.Fatalf("stderr:\n%s", h.stderr)
+	}
+	if h.alertsState() == nil {
+		t.Fatal("the alert history was not committed")
+	}
+}
+
 func TestOnlyTheReportRouteAnswers(t *testing.T) {
 	c := newHost(t, relay(t))
 	col := startCollector(t, c, keygen(t, c))
