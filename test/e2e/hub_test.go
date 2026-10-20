@@ -6,9 +6,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/mail"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -222,6 +224,78 @@ func TestOneCollectorDownStillDeliversToTheOther(t *testing.T) {
 		t.Fatalf("the live collector got nothing:\n%s", h.stderr)
 	}
 	if !strings.Contains(h.stderr, "! Collector "+down+" not reached") || !strings.Contains(h.stderr, "Hub: 1 of 2") {
+		t.Fatalf("stderr:\n%s", h.stderr)
+	}
+}
+
+// subject is a relayed message's decoded Subject line.
+func subject(t *testing.T, data string) string {
+	t.Helper()
+	m, err := mail.ReadMessage(strings.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := new(mime.WordDecoder).DecodeHeader(m.Header.Get("Subject"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func TestTheDigestListsEveryHostInOneMail(t *testing.T) {
+	c := newHost(t, relay(t))
+	key := keygen(t, c)
+	col := startCollector(t, c, key)
+	c.run(0, "config", "set", "collector.peers=c2.example.com")
+	for _, name := range []string{"a.example.com", "b.example.com"} {
+		hubHost(t, name, key, col.url).run(0, "run")
+	}
+
+	c.run(0, "hub", "digest", "--dry-run")
+	for _, want := range []string{"a.example.com", "b.example.com", "2 hosts · 0 OK · 2 UNHEALTHY", "c2.example.com", "SILENT, never reported here"} {
+		if !strings.Contains(c.stdout, want) {
+			t.Fatalf("dry run lacks %q:\n%s", want, c.stdout)
+		}
+	}
+	if len(c.relay.Messages()) != 0 {
+		t.Fatal("a dry run mailed the digest")
+	}
+
+	c.run(0, "hub", "digest")
+	msgs := c.relay.Messages()
+	if len(msgs) != 1 || len(msgs[0].To) != 1 || msgs[0].To[0] != "ops@example.com" {
+		t.Fatalf("want one digest to the daily list, got %+v", msgs)
+	}
+	want := "[hub] 2 hosts · 0 OK · 2 UNHEALTHY · via e2e.example.com · peer c2.example.com SILENT"
+	if got := subject(t, msgs[0].Data); got != want {
+		t.Fatalf("subject %q", got)
+	}
+	for _, host := range []string{"a.example.com", "b.example.com"} {
+		if !strings.Contains(msgs[0].Data, host) {
+			t.Fatalf("the digest does not name %s", host)
+		}
+	}
+	if !strings.Contains(c.stdout, "Digest sent → ops@example.com") {
+		t.Fatalf("stdout:\n%s", c.stdout)
+	}
+}
+
+func TestADigestRecipientListReplacesTheDailyList(t *testing.T) {
+	c := newHost(t, relay(t))
+	key := keygen(t, c)
+	col := startCollector(t, c, key)
+	c.run(0, "config", "set", "collector.digest_recipients=hub@example.com")
+	hubHost(t, "a.example.com", key, col.url).run(0, "run")
+	c.run(0, "hub", "digest")
+	if msgs := c.relay.Messages(); len(msgs) != 1 || len(msgs[0].To) != 1 || msgs[0].To[0] != "hub@example.com" {
+		t.Fatalf("%+v", msgs)
+	}
+}
+
+func TestADigestWithNoReportsSaysSo(t *testing.T) {
+	h := newHost(t, relay(t))
+	h.run(1, "hub", "digest", "--dry-run")
+	if !strings.Contains(h.stderr, "no reports yet") {
 		t.Fatalf("stderr:\n%s", h.stderr)
 	}
 }

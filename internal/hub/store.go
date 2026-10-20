@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thyarles/lhc/internal/check"
 	"github.com/thyarles/lhc/internal/state"
 )
 
@@ -25,10 +26,14 @@ type Stored struct {
 
 // summary is the part of a report the store reads back.
 type summary struct {
-	Schema      int       `json:"schema"`
-	Host        string    `json:"host"`
-	Overall     string    `json:"overall"`
-	GeneratedAt time.Time `json:"generated_at"`
+	Schema      int          `json:"schema"`
+	Host        string       `json:"host"`
+	Overall     string       `json:"overall"`
+	GeneratedAt time.Time    `json:"generated_at"`
+	Vitals      []check.Fact `json:"vitals"`
+	Sections    []struct {
+		Alerts []check.Alert `json:"alerts"`
+	} `json:"sections"`
 }
 
 func (s Store) path(host string) (string, error) {
@@ -54,13 +59,15 @@ func (s Store) Put(host string, st Stored) error {
 	return state.WriteFileAtomic(p, b, 0o600)
 }
 
-// Entry is one row of `lhc hub status`.
+// Entry is one host as the collector last heard from it.
 type Entry struct {
 	Host       string
 	ReceivedAt time.Time
 	Generated  time.Time
 	Overall    string
-	Err        error // the file could not be read
+	Vitals     []check.Fact
+	Alerts     []check.Alert // worst first
+	Err        error         // the file could not be read
 }
 
 // List reads every host's file, sorted by host name. A missing store
@@ -89,7 +96,11 @@ func (s Store) List() ([]Entry, error) {
 		if err == nil {
 			err = json.Unmarshal(st.Report, &sum)
 		}
-		e.ReceivedAt, e.Generated, e.Overall, e.Err = st.ReceivedAt, sum.GeneratedAt, sum.Overall, err
+		e.ReceivedAt, e.Generated, e.Overall, e.Vitals, e.Err = st.ReceivedAt, sum.GeneratedAt, sum.Overall, sum.Vitals, err
+		for _, sec := range sum.Sections {
+			e.Alerts = append(e.Alerts, sec.Alerts...)
+		}
+		slices.SortStableFunc(e.Alerts, func(a, b check.Alert) int { return int(b.Status) - int(a.Status) })
 		out = append(out, e)
 	}
 	slices.SortFunc(out, func(a, b Entry) int { return strings.Compare(a.Host, b.Host) })

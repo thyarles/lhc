@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -55,7 +54,7 @@ func (a *app) collect(ctx context.Context, hup <-chan os.Signal) error {
 	logf := func(format string, args ...any) {
 		_, _ = fmt.Fprintf(a.stderr, "[%s] %s\n", a.now().Format("2006-01-02 15:04:05"), fmt.Sprintf(format, args...))
 	}
-	store := hub.Store{Dir: filepath.Join(a.paths.State, "hub")}
+	store := a.hubStore()
 	recv := hub.NewReceiver(key, int64(a.cfg.Collector.MaxReportSize), store, a.now, logf)
 
 	listen := a.cfg.Collector.Listen
@@ -75,9 +74,14 @@ func (a *app) collect(ctx context.Context, hup <-chan os.Signal) error {
 	logf("collecting on %s into %s", ln.Addr(), store.Dir)
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ln) }()
+	digest := newDigester(a, store, logf)
+	tick := time.NewTicker(time.Minute)
+	defer tick.Stop()
 
 	for {
 		select {
+		case <-tick.C:
+			digest.tick(ctx)
 		case <-ctx.Done():
 			shut, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			err := srv.Shutdown(shut)

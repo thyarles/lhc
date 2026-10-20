@@ -6,11 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"text/tabwriter"
-	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/thyarles/lhc/internal/hub"
+	"github.com/thyarles/lhc/internal/report"
 )
 
 func newHubCmd(a *app) *cobra.Command {
@@ -19,7 +19,7 @@ func newHubCmd(a *app) *cobra.Command {
 		Short: "Hub key and what a collector has received",
 		Args:  cobra.NoArgs,
 	}
-	cmd.AddCommand(newHubKeygenCmd(a), newHubStatusCmd(a), newHubForgetCmd(a))
+	cmd.AddCommand(newHubKeygenCmd(a), newHubStatusCmd(a), newHubForgetCmd(a), newHubDigestCmd(a))
 	return cmd
 }
 
@@ -79,7 +79,7 @@ func newHubStatusCmd(a *app) *cobra.Command {
 			if err := a.load(); err != nil {
 				return err
 			}
-			store := hub.Store{Dir: filepath.Join(a.paths.State, "hub")}
+			store := a.hubStore()
 			entries, err := store.List()
 			if err != nil {
 				return err
@@ -99,7 +99,7 @@ func newHubStatusCmd(a *app) *cobra.Command {
 					_, _ = fmt.Fprintf(w, "%s\t-\tunreadable: %v\t-\n", e.Host, e.Err)
 					continue
 				}
-				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", e.Host, e.ReceivedAt.Local().Format("2006-01-02 15:04"), e.Overall, age(now.Sub(e.ReceivedAt)))
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", e.Host, e.ReceivedAt.Local().Format("2006-01-02 15:04"), e.Overall, report.Ago(now.Sub(e.ReceivedAt)))
 			}
 			return w.Flush()
 		},
@@ -115,26 +115,11 @@ func newHubForgetCmd(a *app) *cobra.Command {
 			if err := a.load(); err != nil {
 				return err
 			}
-			if err := (hub.Store{Dir: filepath.Join(a.paths.State, "hub")}).Forget(args[0]); err != nil {
+			if err := a.hubStore().Forget(args[0]); err != nil {
 				return err
 			}
 			a.printf("  ✓ Forgot %s. If it reports again, it comes back.", args[0])
 			return nil
 		},
-	}
-}
-
-// age reads like a person would say it: 45m, 3h, 2d 4h.
-func age(d time.Duration) string {
-	switch {
-	case d < time.Minute:
-		return "just now"
-	case d < time.Hour:
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	case d < 48*time.Hour:
-		return fmt.Sprintf("%dh", int(d.Hours()))
-	default:
-		days := int(d.Hours()) / 24
-		return fmt.Sprintf("%dd %dh", days, int(d.Hours())-days*24)
 	}
 }
