@@ -155,6 +155,7 @@ the fingerprints it has already notified about:
 | condition got worse (CAUTION → UNHEALTHY) | the alert | the alert |
 | still open after `remind_caution` (7 d) / `remind_unhealthy` (24 h) | the alert | the alert (reminder) |
 | condition cleared | mentioned once | — |
+| no alert, and a hub collector accepted the report (`email.heartbeat: auto`) | nothing: the collector has it | — |
 
 A condition is only recorded as notified after the relay **accepted** the
 mail, and the baselines (ports, SUID files, packages, crontabs) move only
@@ -163,6 +164,12 @@ delivered run, finds the same changes and tries again. A relay that answers
 "try again later" (a 4xx reply) gets one more attempt a minute later.
 An interrupted run (Ctrl+C, or the service stopped mid-run) prints, sends
 and saves nothing.
+
+`email.heartbeat` decides the daily list's mail on a run with no alert:
+`always` sends it, `never` drops it, and `auto` (the default) drops it only
+when at least one hub collector accepted the report, so a host that cannot
+reach its hub still mails. Without `hub.collectors`, `auto` is `always`.
+Alerts are mailed in every mode.
 
 ## Hub
 
@@ -195,9 +202,10 @@ curl -fsSL .../install.sh | bash -s -- --hub-key-file ./hub.key \
   HTTP is therefore enough. Without the key a report can be neither read nor
   forged, a recorded request cannot be replayed, and a clock more than 10
   minutes off is refused.
-- **Never in the way.** The report goes to the collectors after the mail,
-  10 seconds at most for each. A collector that is down is logged, and the
-  run's exit status and its mail stay the same.
+- **Never in the way.** The report goes to the collectors before the mail,
+  10 seconds at most for each. A collector that is down is logged and never
+  changes the run's exit status. When one accepted the report, the daily
+  heartbeat mail is skipped (`email.heartbeat`); alerts are always mailed.
 - A refusal's reason is only in the collector's journal:
   `journalctl -u lhc-collect`.
 - Open port 8461/tcp on the collectors to the hosts that report to them.

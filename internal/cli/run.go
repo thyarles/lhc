@@ -195,19 +195,34 @@ func (a *app) pass(ctx context.Context, o runOpts) error {
 		say("  Report saved: %s", path)
 	}
 
-	err = a.mail(ctx, say, h, res.Overall, decision, states, text, html, now)
-	// After the mail, whatever became of it: a collector is a second path
-	// for the report, and a dead one never changes how this run ends.
-	if outs := a.toCollectors(ctx, say, m); len(outs) > 0 {
+	// Before the mail: a collector that holds the report makes the
+	// heartbeat redundant. A dead one never changes how this run ends.
+	outs := a.toCollectors(ctx, say, m)
+	if len(outs) > 0 {
 		say("  Hub: %d of %d collector(s) accepted the report", hub.Accepted(outs), len(outs))
 	}
-	return err
+	return a.mail(ctx, say, h, res.Overall, decision, states, text, html, now, outs)
+}
+
+// mailDue says whether this run mails at all. An alert always does; the
+// rest is the heartbeat, which email.heartbeat may drop: "never" always,
+// "auto" only when a collector holds this run's report, so a host whose
+// hub is unreachable still says it is alive.
+func mailDue(alert bool, mode string, collectors, accepted int) bool {
+	switch {
+	case alert, mode == "always":
+		return true
+	case mode == "never":
+		return false
+	default: // auto
+		return collectors == 0 || accepted == 0
+	}
 }
 
 // mail sends the run's message and, once the relay accepted it, commits the
-// alert history and the baselines.
+// alert history and the baselines. outs is where the hub delivery went.
 func (a *app) mail(ctx context.Context, say func(string, ...any), h check.Host, overall check.Status,
-	decision *alerts.Decision, states *state.Dir, text, html string, now time.Time,
+	decision *alerts.Decision, states *state.Dir, text, html string, now time.Time, outs []hub.Outcome,
 ) error {
 	to, isAlert := notify.PlanDelivery(decision, a.cfg.Email.DailyRecipients, a.cfg.Email.AlertRecipients)
 	subject := notify.Subject(overall, decision, h.Label, isAlert, now)
@@ -219,6 +234,19 @@ func (a *app) mail(ctx context.Context, say func(string, ...any), h check.Host, 
 		say("  ! Findings need attention but no alert_recipients are configured — heartbeat only")
 	default:
 		say("  No broad alert — %s", decision.Reason)
+	}
+
+	// NotifyAll, not isAlert: with no alert list the alert goes to the
+	// daily list, and it is still an alert.
+	if !mailDue(decision.NotifyAll, a.cfg.Email.Heartbeat, len(outs), hub.Accepted(outs)) {
+		if a.cfg.Email.Heartbeat == "never" {
+			say("  Heartbeat skipped — email.heartbeat is never")
+		} else {
+			say("  Heartbeat skipped — delivered to collector %s", firstAccepted(outs))
+		}
+		// The collector holds the report, or the owner chose no heartbeat:
+		// nothing is waiting to be retried. Commit as for no recipients.
+		return commit(decision, states)
 	}
 
 	if len(to) == 0 {
@@ -272,6 +300,15 @@ func (a *app) toCollectors(ctx context.Context, say func(string, ...any), m *rep
 		}
 	}
 	return outs
+}
+
+func firstAccepted(outs []hub.Outcome) string {
+	for _, o := range outs {
+		if o.Err == nil {
+			return o.Collector
+		}
+	}
+	return ""
 }
 
 func (a *app) seal(m *report.Model) (*hub.Envelope, error) {

@@ -80,6 +80,7 @@ func TestValidation(t *testing.T) {
 		"smtp:\n  tls: maybe\n",
 		"smtp:\n  username: u\n",
 		"email:\n  html_mode: pdf\n",
+		"email:\n  heartbeat: sometimes\n",
 		"email:\n  daily_recipients: [not-an-address]\n",
 		"alerts:\n  notify_all_on: info\n",
 		"schedule:\n  time: \"25:00\"\n",
