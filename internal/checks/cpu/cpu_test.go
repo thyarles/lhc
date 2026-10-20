@@ -46,23 +46,67 @@ func TestPerCoreCPUIsSummarisedNotListed(t *testing.T) {
 	checktest.NoAlerts(t, s)
 }
 
-func TestBusyCoresAreStillNamed(t *testing.T) {
-	e := newEnv(t)
+// tenCores is a 10-core mpstat with the given cores 98% busy.
+func tenCores(e *checktest.Env, all float64, busy ...string) {
 	e.Fake.Tool("mpstat")
-	lines := []string{mpstatLine("all", 50)}
-	for i := range 8 {
-		lines = append(lines, mpstatLine(fmt.Sprint(i), 99))
+	lines := []string{mpstatLine("all", all)}
+	for i := range 10 {
+		idle := 99.0
+		if slices.Contains(busy, fmt.Sprint(i)) {
+			idle = 2
+		}
+		lines = append(lines, mpstatLine(fmt.Sprint(i), idle))
 	}
-	lines = append(lines, mpstatLine("9", 2)) // 98% busy
 	e.Fake.Expect("mpstat", strings.Join(lines, "\n"))
 	e.Fake.Expect("nproc", "10")
+}
+
+// One core at 96% made two of twenty rke2 nodes UNHEALTHY in one digest:
+// any single-threaded process does that.
+func TestABusyCoreIsNamedButNotAlerted(t *testing.T) {
+	e := newEnv(t)
+	tenCores(e, 90, "9")
 	s := e.Run(Check{})
 	row, ok := checktest.Rows(s)["CPU 9"]
-	if !ok || row.Value != "98.0% used" || row.Status != check.Unhealthy {
+	if !ok || row.Value != "98.0% used" || row.Status != check.Info || row.Meter == nil {
 		t.Fatalf("CPU 9 row: %+v", row)
 	}
-	if !checktest.HasAlertContaining(s, "CPU 9 at 98%") {
-		t.Fatalf("alerts: %q", s.AlertMsgs())
+	checktest.NoAlerts(t, s)
+	if s.Status.Flagged() {
+		t.Fatalf("section %v", s.Status)
+	}
+	var saved []string
+	if !e.Loaded(t, busyKey, &saved) || !slices.Equal(saved, []string{"9"}) {
+		t.Fatalf("saved %v", saved)
+	}
+}
+
+func TestTheSameCoreBusyOnTheNextRunAlerts(t *testing.T) {
+	e := newEnv(t)
+	e.Seed(t, busyKey, []string{"9"})
+	tenCores(e, 90, "9")
+	s := e.Run(Check{})
+	if got := s.AlertMsgs(); !slices.Equal(got, []string{"CPU 9 busy since the previous run (98%)"}) || s.Alerts[0].Status != check.Caution {
+		t.Fatalf("alerts %q", got)
+	}
+	if row := checktest.Rows(s)["CPU 9"]; row.Status != check.Caution {
+		t.Fatalf("row %+v", row)
+	}
+}
+
+func TestAnotherCoreBusyOnTheNextRunDoesNotAlert(t *testing.T) {
+	e := newEnv(t)
+	e.Seed(t, busyKey, []string{"3"})
+	tenCores(e, 90, "9")
+	checktest.NoAlerts(t, e.Run(Check{}))
+}
+
+func TestEveryCoreBusyStillAlertsAtOnce(t *testing.T) {
+	e := newEnv(t)
+	tenCores(e, 2, "0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
+	s := e.Run(Check{})
+	if got := s.AlertMsgs(); !slices.Equal(got, []string{"CPU at 98%"}) || s.Alerts[0].Status != check.Unhealthy {
+		t.Fatalf("alerts %q", got)
 	}
 }
 

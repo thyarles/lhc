@@ -117,7 +117,10 @@ checks:
     enabled: true
   cpu:
     enabled: true
-    caution: 80                # percent busy
+    # Percent busy, for all cores together. A single core at caution or
+    # above is listed, and alerts (CAUTION) only when the same core was busy
+    # on the previous run too: something stuck, not one busy process.
+    caution: 80
     unhealthy: 95
     # Load average thresholds, as multiples of the CPU count.
     load_caution_mult: 1
