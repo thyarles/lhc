@@ -342,7 +342,15 @@ func TestNoElementCarriesTextColourWithoutABackground(t *testing.T) {
 	s.Add("/var", "91% used", check.Caution, check.Meter(91))
 	s.Add("/", "40% used", check.OK)
 	tr := &Triage{NotifyAll: true, Summary: "1 new", New: []string{"x"}, Resolved: []string{"y"}}
-	body := strings.SplitN(html(t, model("h", tr, s, notApplicable("Docker"))), "<body", 2)[1]
+	if naked := nakedColours(html(t, model("h", tr, s, notApplicable("Docker")))); len(naked) > 0 {
+		t.Fatalf("these would vanish on a force-inverting client: %q", naked)
+	}
+}
+
+// nakedColours are the elements that set a text colour with neither a
+// background nor one of the pinned classes.
+func nakedColours(page string) []string {
+	body := strings.SplitN(page, "<body", 2)[1]
 	tag := regexp.MustCompile(`<(td|tr|div|li)\b([^>]*)>`)
 	style := regexp.MustCompile(`style="([^"]*)"`)
 	color := regexp.MustCompile(`(^|;)\s*color:`)
@@ -358,9 +366,7 @@ func TestNoElementCarriesTextColourWithoutABackground(t *testing.T) {
 			naked = append(naked, "<"+m[1]+"> "+st[1])
 		}
 	}
-	if len(naked) > 0 {
-		t.Fatalf("these would vanish on a force-inverting client: %q", naked)
-	}
+	return naked
 }
 
 func TestUnflaggedRowsArePinnedWhiteButFlaggedRowsKeepTheirTint(t *testing.T) {

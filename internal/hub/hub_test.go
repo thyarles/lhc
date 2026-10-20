@@ -25,7 +25,7 @@ var (
 	t0    = time.Date(2026, 1, 5, 7, 0, 0, 0, time.UTC)
 )
 
-func report(host string) []byte {
+func sample(host string) []byte {
 	return []byte(`{"schema":1,"host":"` + host + `","overall":"caution","generated_at":"2026-01-05T07:00:00Z","sections":[]}`)
 }
 
@@ -68,9 +68,9 @@ func TestKeygenAndLoad(t *testing.T) {
 }
 
 func TestEnvelopeRoundTrip(t *testing.T) {
-	e := seal(t, key, "web01.example.com", t0, report("web01.example.com"))
+	e := seal(t, key, "web01.example.com", t0, sample("web01.example.com"))
 	got, err := Open(key, e, 1<<20)
-	if err != nil || !bytes.Equal(got, report("web01.example.com")) {
+	if err != nil || !bytes.Equal(got, sample("web01.example.com")) {
 		t.Fatalf("%v %s", err, got)
 	}
 	if _, err := Open(other, e, 1<<20); err == nil {
@@ -87,7 +87,7 @@ func TestTamperingIsDetected(t *testing.T) {
 		"nonce":   func(e *Envelope) { e.Nonce[0] ^= 1 },
 		"version": func(e *Envelope) { e.V = 2 },
 	} {
-		e := seal(t, key, "web01.example.com", t0, report("web01.example.com"))
+		e := seal(t, key, "web01.example.com", t0, sample("web01.example.com"))
 		tamper(e)
 		if _, err := Open(key, e, 1<<20); err == nil {
 			t.Errorf("tampered %s was accepted", name)
@@ -105,7 +105,7 @@ func TestHostNames(t *testing.T) {
 		if ValidHost(bad) {
 			t.Errorf("accepted %q", bad)
 		}
-		if _, err := Seal(key, bad, t0, report(bad)); err == nil {
+		if _, err := Seal(key, bad, t0, sample(bad)); err == nil {
 			t.Errorf("sealed %q", bad)
 		}
 	}
@@ -158,7 +158,7 @@ func (c *collector) lastLog() string {
 
 func TestAnAcceptedReportIsStored(t *testing.T) {
 	c := newCollector(t)
-	w := c.post(t, seal(t, key, "web01.example.com", t0, report("web01.example.com")))
+	w := c.post(t, seal(t, key, "web01.example.com", t0, sample("web01.example.com")))
 	if w.Code != http.StatusNoContent || w.Body.Len() != 0 {
 		t.Fatalf("%d %q", w.Code, w.Body)
 	}
@@ -202,18 +202,18 @@ func nothingStored(t *testing.T, c *collector) {
 }
 
 func TestRefusals(t *testing.T) {
-	traversal := seal(t, key, "web01", t0, report("web01"))
+	traversal := seal(t, key, "web01", t0, sample("web01"))
 	traversal.Host = "../etc/passwd"
 	envelope := func(e *Envelope) []byte { b, _ := json.Marshal(e); return b }
 	for _, tc := range []struct {
 		name, why string
 		body      []byte
 	}{
-		{"wrong key", "does not decrypt", envelope(seal(t, other, "web01", t0, report("web01")))},
-		{"clock behind", "from this collector's clock", envelope(seal(t, key, "web01", t0.Add(-11*time.Minute), report("web01")))},
-		{"clock ahead", "from this collector's clock", envelope(seal(t, key, "web01", t0.Add(11*time.Minute), report("web01")))},
+		{"wrong key", "does not decrypt", envelope(seal(t, other, "web01", t0, sample("web01")))},
+		{"clock behind", "from this collector's clock", envelope(seal(t, key, "web01", t0.Add(-11*time.Minute), sample("web01")))},
+		{"clock ahead", "from this collector's clock", envelope(seal(t, key, "web01", t0.Add(11*time.Minute), sample("web01")))},
 		{"not schema 1", "schema 2", envelope(seal(t, key, "web01", t0, []byte(`{"schema":2,"host":"web01"}`)))},
-		{"report for another host", `inside is for "web02"`, envelope(seal(t, key, "web01", t0, report("web02")))},
+		{"report for another host", `inside is for "web02"`, envelope(seal(t, key, "web01", t0, sample("web02")))},
 		{"path in the host name", "bad host name", envelope(traversal)},
 		{"not json", "not an envelope", []byte("hello")},
 		{"unknown field", "not an envelope", []byte(`{"v":1,"cmd":"rm"}`)},
@@ -229,7 +229,7 @@ func TestRefusals(t *testing.T) {
 func TestSkewInsideTheWindowIsAccepted(t *testing.T) {
 	c := newCollector(t)
 	for i, d := range []time.Duration{-9 * time.Minute, 9 * time.Minute} {
-		if w := c.post(t, seal(t, key, fmt.Sprintf("web0%d", i), t0.Add(d), report(fmt.Sprintf("web0%d", i)))); w.Code != http.StatusNoContent {
+		if w := c.post(t, seal(t, key, fmt.Sprintf("web0%d", i), t0.Add(d), sample(fmt.Sprintf("web0%d", i)))); w.Code != http.StatusNoContent {
 			t.Fatalf("%s: %d %s", d, w.Code, c.lastLog())
 		}
 	}
@@ -239,7 +239,7 @@ func TestAReplayIsRefusedForTheWholeWindow(t *testing.T) {
 	c := newCollector(t)
 	// Sent from a clock 9 minutes ahead: the envelope stays fresh until 19
 	// minutes after the collector first accepted it.
-	e := seal(t, key, "web01", t0.Add(9*time.Minute), report("web01"))
+	e := seal(t, key, "web01", t0.Add(9*time.Minute), sample("web01"))
 	if w := c.post(t, e); w.Code != http.StatusNoContent {
 		t.Fatal(c.lastLog())
 	}
@@ -298,16 +298,16 @@ func TestTheRateIsLimitedPerAddress(t *testing.T) {
 	for range RatePerMinute {
 		c.raw(http.MethodPost, Path, []byte("x"))
 	}
-	refused(t, c, c.post(t, seal(t, key, "web01", t0, report("web01"))), "requests in a minute")
+	refused(t, c, c.post(t, seal(t, key, "web01", t0, sample("web01"))), "requests in a minute")
 	c.now = t0.Add(time.Minute)
-	if w := c.post(t, seal(t, key, "web01", c.now, report("web01"))); w.Code != http.StatusNoContent {
+	if w := c.post(t, seal(t, key, "web01", c.now, sample("web01"))); w.Code != http.StatusNoContent {
 		t.Fatal(c.lastLog())
 	}
 }
 
 func TestForget(t *testing.T) {
 	s := Store{Dir: t.TempDir()}
-	if err := s.Put("web01", Stored{Report: report("web01")}); err != nil {
+	if err := s.Put("web01", Stored{Report: sample("web01")}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Forget("../web01"); err == nil {
@@ -338,7 +338,7 @@ func TestSendToEveryCollectorEvenWithOneDown(t *testing.T) {
 	down := "http://" + l.Addr().String()
 	_ = l.Close()
 
-	e := seal(t, key, "web01", t0, report("web01"))
+	e := seal(t, key, "web01", t0, sample("web01"))
 	outs := Send(context.Background(), []string{down, up.URL + "/"}, e, time.Second)
 	if len(outs) != 2 || outs[0].Err == nil || outs[1].Err != nil || Accepted(outs) != 1 {
 		t.Fatalf("%+v", outs)
@@ -356,7 +356,7 @@ func TestSendTimesOut(t *testing.T) {
 	defer slow.Close()
 	defer close(release)
 	start := time.Now()
-	outs := Send(context.Background(), []string{slow.URL}, seal(t, key, "web01", t0, report("web01")), 200*time.Millisecond)
+	outs := Send(context.Background(), []string{slow.URL}, seal(t, key, "web01", t0, sample("web01")), 200*time.Millisecond)
 	if outs[0].Err == nil || time.Since(start) > 5*time.Second {
 		t.Fatalf("%+v after %s", outs, time.Since(start))
 	}
@@ -365,7 +365,7 @@ func TestSendTimesOut(t *testing.T) {
 func TestARefusalExplainsItself(t *testing.T) {
 	no := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusBadRequest) }))
 	defer no.Close()
-	outs := Send(context.Background(), []string{no.URL}, seal(t, key, "web01", t0, report("web01")), time.Second)
+	outs := Send(context.Background(), []string{no.URL}, seal(t, key, "web01", t0, sample("web01")), time.Second)
 	if outs[0].Err == nil || !strings.Contains(outs[0].Err.Error(), "wrong hub key") {
 		t.Fatalf("%+v", outs)
 	}

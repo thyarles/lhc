@@ -1,0 +1,35 @@
+==============================================================================
+  lhc hub digest v1.2.3  ·  via lhc-c1.example.com
+  2026-10-21 09:00 -03
+  Overall Status: ✕  UNHEALTHY
+  40 hosts · 36 OK · 1 CAUTION · 1 UNHEALTHY · 1 SILENT
+==============================================================================
+
+  COLLECTORS
+  ✓  lhc-c1.example.com             this one
+  ✓  lhc-c2.example.com             last report 2026-10-21 04:00 (5h ago)
+  ✕  lhc-c3.example.com             SILENT since 2026-10-19 07:00 (2d 2h ago)
+       this may be the only digest today
+
+  SILENT — no report for over 26h
+  ✕  lhc-c3.example.com             last report 2026-10-19 07:00 (2d 2h ago)
+
+  NOT OK
+  ✕  db01.example.com               UNHEALTHY · new
+       - Disk / at 97%
+       - Service postgresql.service failed
+       (+1 more)
+  !  web01.example.com              CAUTION
+       - Reboot pending for more than 14 days
+
+  NEW HOSTS since the last digest
+     web02.example.com
+
+  EVERYONE ELSE
+  36 hosts OK
+  uptime 3 hours to 1320 days · 1400 pending updates · 3 hosts waiting for a
+  reboot
+
+  A host that was shut down for good stays SILENT here until you run
+  `lhc hub forget HOST` on each collector.
+==============================================================================

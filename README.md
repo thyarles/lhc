@@ -105,6 +105,7 @@ lhc serve                     # foreground scheduler, for hosts with neither sys
 lhc hub keygen              # once per hub: the shared key for collectors
 lhc hub status              # on a collector: every host's latest report and its age
 lhc hub forget HOST         # on a collector: drop a decommissioned host
+lhc hub digest [--dry-run]  # on a collector: mail (or print) the daily digest now
 ```
 
 `lhc report` and `lhc run --dry-run` never touch the saved baselines, so a
@@ -209,6 +210,30 @@ curl -fsSL .../install.sh | bash -s -- --hub-key-file ./hub.key \
 - A refusal's reason is only in the collector's journal:
   `journalctl -u lhc-collect`.
 - Open port 8461/tcp on the collectors to the hosts that report to them.
+
+### The daily digest
+
+Every day at `collector.digest_time` (09:00) each collector mails one
+digest, tagged `[hub]`, to `collector.digest_recipients` (or
+`email.daily_recipients`):
+
+```
+[hub] 20 hosts · 14 OK · 5 CAUTION · 1 SILENT · via lhc-c1.example.com
+```
+
+It lists, in this order: the collectors, and whether each peer still
+reports; the **silent** hosts, with no report for `collector.silent_after`
+(26h); every host at CAUTION or worse with its first two alerts, marked
+`new` when it was OK in the previous digest; hosts seen for the first time;
+and one line for everyone else, with uptimes, pending updates and pending
+reboots summed. A host's own `[ACTION]` alerts still go out from the host:
+the digest is a summary, never the alert path.
+
+With several collectors each sends its own digest. List the others in
+`collector.peers` on each one: when a collector dies, the others' digests
+say so in the subject (`· peer lhc-c2.example.com SILENT`). A relay that
+refuses the digest is retried every 30 minutes until the next day's.
+`lhc hub digest --dry-run` prints the digest as it stands.
 
 ## Files
 

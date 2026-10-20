@@ -97,6 +97,20 @@ collector:
   listen: ":8461"
   # Largest request, and largest report once decompressed.
   max_report_size: 1MiB
+  # Local time, HH:MM, of the daily digest: one mail listing every host's
+  # latest report. After the hosts' nightly window (schedule.time plus
+  # schedule.random_window, 00:07 + 8h by default), so every host has
+  # reported today: move it when you change those.
+  digest_time: "09:00"
+  # Empty = email.daily_recipients.
+  digest_recipients: []
+  # A host with no report for this long is SILENT. Hosts report at least
+  # daily and the random window moves a run by up to 8h, hence 26h.
+  silent_after: 26h
+  # Host names of the other collectors. Each digest says whether they still
+  # report, so a dead collector shows up in the others' digests.
+  # e.g. ["lhc-c2.example.com", "lhc-c3.example.com"]
+  peers: []
 
 checks:
   system:

@@ -117,6 +117,14 @@ type Collector struct {
 	Listen  string `yaml:"listen"`
 	// Largest request, and largest report once decompressed.
 	MaxReportSize Size `yaml:"max_report_size"`
+	// Local time, HH:MM, of the daily digest of every host's latest report.
+	DigestTime string `yaml:"digest_time"`
+	// Empty = email.daily_recipients.
+	DigestRecipients []string `yaml:"digest_recipients"`
+	// A host with no report for this long is SILENT.
+	SilentAfter Duration `yaml:"silent_after"`
+	// Host names of the other collectors, shown first in the digest.
+	Peers []string `yaml:"peers"`
 }
 
 // Default is the configuration a host runs with when its file says nothing.
@@ -131,11 +139,14 @@ func Default() *Config {
 			RemindUnhealthy: Duration(24 * time.Hour),
 			ForgetAfter:     Duration(72 * time.Hour),
 		},
-		Schedule:  Schedule{Time: "00:07", Random: true, RandomWindow: "8h"},
-		Reports:   Reports{Keep: 30},
-		Hub:       Hub{Collectors: []string{}, KeyFile: "/etc/lhc/hub.key"},
-		Collector: Collector{Listen: ":8461", MaxReportSize: 1 << 20},
-		Checks:    map[string]check.Config{},
+		Schedule: Schedule{Time: "00:07", Random: true, RandomWindow: "8h"},
+		Reports:  Reports{Keep: 30},
+		Hub:      Hub{Collectors: []string{}, KeyFile: "/etc/lhc/hub.key"},
+		Collector: Collector{
+			Listen: ":8461", MaxReportSize: 1 << 20,
+			DigestTime: "09:00", DigestRecipients: []string{}, SilentAfter: Duration(26 * time.Hour), Peers: []string{},
+		},
+		Checks: map[string]check.Config{},
 	}
 	for _, ch := range check.All() {
 		c.Checks[ch.Meta().Name] = ch.Defaults()
@@ -291,7 +302,11 @@ func (c *Config) Validate() error {
 	for _, list := range []struct {
 		key  string
 		addr []string
-	}{{"email.daily_recipients", c.Email.DailyRecipients}, {"email.alert_recipients", c.Email.AlertRecipients}} {
+	}{
+		{"email.daily_recipients", c.Email.DailyRecipients},
+		{"email.alert_recipients", c.Email.AlertRecipients},
+		{"collector.digest_recipients", c.Collector.DigestRecipients},
+	} {
 		for _, a := range list.addr {
 			if !strings.Contains(a, "@") || strings.ContainsAny(a, " ,;<>") {
 				bad("%s: %q is not an e-mail address", list.key, a)
@@ -330,6 +345,17 @@ func (c *Config) Validate() error {
 	}
 	if m := c.Collector.MaxReportSize; m < 64<<10 || m > 64<<20 {
 		bad("collector.max_report_size: %s is outside 64KiB..64MiB", m)
+	}
+	if _, _, err := ParseTime(c.Collector.DigestTime); err != nil {
+		bad("collector.digest_time: %v", err)
+	}
+	if d := c.Collector.SilentAfter.D(); d < time.Hour {
+		bad("collector.silent_after: %s is under 1h; hosts report at most every hour", c.Collector.SilentAfter)
+	}
+	for _, p := range c.Collector.Peers {
+		if !validHost(p) {
+			bad("collector.peers: %q is not a host name", p)
+		}
 	}
 	for name, cc := range c.Checks {
 		if v, ok := cc.(interface{ Validate() error }); ok {
@@ -371,3 +397,9 @@ func (c *Config) Marshal() ([]byte, error) {
 	err := enc.Encode(out{c.Hostname, c.SMTP, c.Email, c.Alerts, c.Schedule, c.Reports, c.Paths, c.Hub, c.Collector, c.Checks})
 	return buf.Bytes(), err
 }
+
+// peerName is hub.ValidHost's rule, repeated here because config sits below
+// hub in the import graph.
+var peerName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$`)
+
+func validHost(v string) bool { return peerName.MatchString(v) }
