@@ -29,7 +29,13 @@ func TestZombieThresholds(t *testing.T) {
 		count int
 		want  check.Status
 	}{
-		{0, check.OK}, {1, check.Info}, {3, check.Info}, {10, check.Caution}, {50, check.Unhealthy},
+		{0, check.OK},
+		{1, check.Info},
+		{50, check.Info},
+		{2499, check.Info},
+		{2500, check.Caution},
+		{2999, check.Caution},
+		{3000, check.Unhealthy},
 	}
 	for _, c := range cases {
 		t.Run(fmt.Sprint(c.count), func(t *testing.T) {
@@ -164,7 +170,7 @@ func TestValidate(t *testing.T) {
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	c.ZombieCaution = 60
+	c.ZombieCaution = c.ZombieUnhealthy + 1
 	if c.Validate() == nil {
 		t.Fatal("zombie_caution above zombie_unhealthy accepted")
 	}
@@ -173,8 +179,12 @@ func TestValidate(t *testing.T) {
 // An rke2 worker had 1153 zombies, nearly all left by a Go service running
 // as its container's PID 1. The count alone left the reader asking whether
 // only a reboot would clear them.
+// piles are the thresholds the parent and remedy tests use, so they do not
+// depend on the defaults.
+func piles() *Config { return &Config{Toggle: check.On, ZombieCaution: 10, ZombieUnhealthy: 50} }
+
 func TestZombieParentsAndTheRemedyAreNamed(t *testing.T) {
-	e := checktest.NewEnv(t, Check{}, nil)
+	e := checktest.NewEnv(t, Check{}, piles())
 	e.Fake.Expect("ps aux", withZombies(60))
 	e.Fake.Expect("ps -e -o ppid=,stat=", strings.Repeat("3333254 Zs\n", 55)+strings.Repeat("880 Z\n", 5)+"1 Ss\n3333254 S\n")
 	e.Fake.File("/proc/3333254/comm", "consumer\n")
@@ -205,7 +215,7 @@ func TestZombieParentsAndTheRemedyAreNamed(t *testing.T) {
 // crictl loop by hand on each node; the hub digest shows only the alert.
 func TestTheZombieParentsPodIsNamed(t *testing.T) {
 	const id = "4f1d0c3b9a8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a392817060000"
-	e := checktest.NewEnv(t, Check{}, nil)
+	e := checktest.NewEnv(t, Check{}, piles())
 	e.Fake.Tool("crictl").Socket("/run/k3s/containerd/containerd.sock")
 	e.Fake.Expect("ps aux", withZombies(2304))
 	e.Fake.Expect("ps -e -o ppid=,stat=", strings.Repeat("8674 Z\n", 2304))
@@ -225,7 +235,7 @@ func TestTheZombieParentsPodIsNamed(t *testing.T) {
 }
 
 func TestAParentWithNoKnownCommandIsNotNamed(t *testing.T) {
-	e := checktest.NewEnv(t, Check{}, nil)
+	e := checktest.NewEnv(t, Check{}, piles())
 	e.Fake.Expect("ps aux", withZombies(12))
 	e.Fake.Expect("ps -e -o ppid=,stat=", strings.Repeat("4242 Z\n", 12))
 	if got := e.Run(Check{}).AlertMsgs(); !slices.Equal(got, []string{"12 zombie processes"}) {
@@ -234,7 +244,7 @@ func TestAParentWithNoKnownCommandIsNotNamed(t *testing.T) {
 }
 
 func TestZombiesOnTheHostNeedNoContainerAdvice(t *testing.T) {
-	e := checktest.NewEnv(t, Check{}, nil)
+	e := checktest.NewEnv(t, Check{}, piles())
 	e.Fake.Expect("ps aux", withZombies(12))
 	e.Fake.Expect("ps -e -o ppid=,stat=", strings.Repeat("4242 Z\n", 12))
 	e.Fake.File("/proc/4242/comm", "cron\n")
@@ -248,8 +258,20 @@ func TestZombiesOnTheHostNeedNoContainerAdvice(t *testing.T) {
 	}
 }
 
-func TestAFewZombiesDoNotLookForParents(t *testing.T) {
+// The same CSI plugin, at the defaults: a steady pile of a few thousand is
+// known and harmless for now, and alerted a dozen nodes every day.
+func TestTheCSIPluginsPileDoesNotAlertAtTheDefaults(t *testing.T) {
 	e := checktest.NewEnv(t, Check{}, nil)
+	e.Fake.Expect("ps aux", withZombies(2304))
+	s := e.Run(Check{})
+	checktest.NoAlerts(t, s)
+	if z := checktest.Rows(s)["Zombie Processes"]; z.Status != check.Info || z.Value != "2304" {
+		t.Fatalf("zombie row %+v", z)
+	}
+}
+
+func TestAFewZombiesDoNotLookForParents(t *testing.T) {
+	e := checktest.NewEnv(t, Check{}, piles())
 	e.Fake.Expect("ps aux", withZombies(3))
 	e.Run(Check{})
 	if slices.ContainsFunc(e.Fake.Calls(), func(c string) bool { return strings.Contains(c, "ppid=") }) {

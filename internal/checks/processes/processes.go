@@ -30,7 +30,7 @@ func (Check) Meta() check.Meta {
 }
 
 func (Check) Defaults() check.Config {
-	return &Config{Toggle: check.On, ZombieCaution: 10, ZombieUnhealthy: 50}
+	return &Config{Toggle: check.On, ZombieCaution: 2500, ZombieUnhealthy: 3000}
 }
 
 // Validate keeps the thresholds in order.
