@@ -74,7 +74,8 @@ The installer downloads the release archive, verifies its SHA-256, installs
 `/usr/local/bin/lhc`, writes `/etc/lhc/config.yaml` and schedules the run:
 a **systemd timer** where systemd 229+ is available, otherwise a **crontab**
 entry (RHEL 7). Re-running it upgrades in place and keeps the config, state
-and reports. Check the mail settings straight away with `lhc test-mail`:
+and reports; on a hub collector it also restarts `lhc-collect`, so the
+collector runs the new version too. Check the mail settings straight away with `lhc test-mail`:
 it takes seconds, where a first `lhc run` can take minutes on a host whose
 package repositories are slow or unreachable. `--help` lists the options (`--time 06:30`, `--every 6h`,
 `--no-schedule`, a specific version, ...).
