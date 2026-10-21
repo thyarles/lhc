@@ -29,7 +29,8 @@ supervisor.
 
 --collector also makes this host a hub collector: it sets
 collector.enabled and runs "lhc collect" as the lhc-collect service. That
-needs systemd and the hub key (lhc hub keygen) in place first. On a host
+needs systemd (any version: RHEL 7 too, where the run itself uses cron) and
+the hub key (lhc hub keygen) in place first. On a host
 where collector.enabled is already true, every install (an upgrade
 included) rewrites and restarts that service, with or without --collector.`,
 		Args: cobra.NoArgs,
@@ -50,8 +51,8 @@ included) rewrites and restarts that service, with or without --collector.`,
 			if why != "" {
 				// Checked before anything is changed: a service without its
 				// key would restart every five seconds, forever.
-				if schedule.Detect(cmd.Context(), a.runner, isRoot()) != schedule.Systemd {
-					return fmt.Errorf("%s needs systemd 229 or later, as root: lhc collect runs as a service", why)
+				if !schedule.CanRunServices(a.runner, isRoot()) {
+					return fmt.Errorf("%s needs systemd, as root: lhc collect runs as a service", why)
 				}
 				if _, err := hub.LoadKey(a.cfg.Hub.KeyFile); err != nil {
 					return fmt.Errorf("%s needs the hub key first (lhc hub keygen, or copy the hub key file): %w", why, err)

@@ -54,6 +54,17 @@ func Detect(ctx context.Context, r runner.Runner, root bool) Backend {
 	return None
 }
 
+// CanRunServices says whether lhc can install a system service such as
+// lhc-collect: root and a running systemd, of any version. The collector's
+// unit uses nothing newer than systemd 219 (RHEL 7); only the timer needs 229.
+func CanRunServices(r runner.Runner, root bool) bool {
+	if !root || !r.Exists("/run/systemd/system") {
+		return false
+	}
+	_, ok := r.LookPath("systemctl")
+	return ok
+}
+
 // systemdVersion reads "systemd 252 (252.22-1~deb12u1)".
 func systemdVersion(out string) int {
 	f := strings.Fields(out)
@@ -266,12 +277,13 @@ func (in *Installer) warnLegacy(crontab string) {
 }
 
 // InstallCollector writes, enables and (re)starts lhc-collect.service. The
-// restart picks up a new binary after an upgrade.
+// restart picks up a new binary after an upgrade. No --now: systemd 219
+// (RHEL 7) predates it, and the restart starts the service anyway.
 func (in *Installer) InstallCollector(ctx context.Context, j Job) error {
 	if err := os.WriteFile(filepath.Join(UnitDir, CollectorName), []byte(CollectorUnit(j)), 0o644); err != nil { //nolint:gosec // unit files are world-readable by convention
 		return err
 	}
-	for _, args := range [][]string{{"daemon-reload"}, {"enable", "--now", CollectorName}, {"restart", CollectorName}} {
+	for _, args := range [][]string{{"daemon-reload"}, {"enable", CollectorName}, {"restart", CollectorName}} {
 		if res := in.Runner.Run(ctx, "systemctl", args...); !res.OK() {
 			return fmt.Errorf("systemctl %s: %s", strings.Join(args, " "), firstLine(res.Stderr, res.Err))
 		}
@@ -291,7 +303,8 @@ func (in *Installer) removeCollector(ctx context.Context) error {
 	if _, err := os.Stat(unit); err != nil {
 		return nil
 	}
-	in.Runner.Run(ctx, "systemctl", "disable", "--now", CollectorName)
+	in.Runner.Run(ctx, "systemctl", "stop", CollectorName)
+	in.Runner.Run(ctx, "systemctl", "disable", CollectorName)
 	if err := os.Remove(unit); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}

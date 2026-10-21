@@ -236,6 +236,29 @@ func TestDetect(t *testing.T) {
 	}
 }
 
+// RHEL 7's systemd 219 is too old for the timer but runs a collector fine.
+func TestACollectorNeedsSystemdOfAnyVersionAsRoot(t *testing.T) {
+	cases := []struct {
+		name          string
+		root, systemd bool
+		want          bool
+	}{
+		{"systemd as root", true, true, true},
+		{"not root", false, true, false},
+		{"no systemd", true, false, false},
+	}
+	for _, c := range cases {
+		f := checktest.NewRunner()
+		if c.systemd {
+			f.Dir("/run/systemd/system").Tool("systemctl")
+			f.Expect("systemctl --version", "systemd 219\n+PAM +AUDIT")
+		}
+		if got := CanRunServices(f, c.root); got != c.want {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 func TestNextRun(t *testing.T) {
 	now := time.Date(2026, 1, 5, 7, 0, 0, 0, time.UTC)
 	if n, _ := Next(sched("00:07", ""), now); !n.Equal(time.Date(2026, 1, 6, 0, 7, 0, 0, time.UTC)) {
@@ -289,11 +312,15 @@ func TestTheCollectorServiceInstallsAndUninstalls(t *testing.T) {
 			t.Errorf("unit lacks %q:\n%s", want, unit)
 		}
 	}
-	if calls := strings.Join(fake.Calls(), "\n"); !strings.Contains(calls, "systemctl enable --now "+CollectorName) {
+	// systemd 219 (RHEL 7) has no --now.
+	if calls := strings.Join(fake.Calls(), "\n"); !strings.Contains(calls, "systemctl enable "+CollectorName+"\nsystemctl restart "+CollectorName) || strings.Contains(calls, "--now") {
 		t.Fatal(calls)
 	}
 	if err := in.Uninstall(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+	if calls := strings.Join(fake.Calls(), "\n"); !strings.Contains(calls, "systemctl stop "+CollectorName+"\nsystemctl disable "+CollectorName) {
+		t.Fatal(calls)
 	}
 	if _, err := os.Stat(filepath.Join(UnitDir, CollectorName)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("the collector unit is still there")

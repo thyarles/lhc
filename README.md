@@ -184,7 +184,7 @@ latest report of every host in `/var/lib/lhc/hub/`.
 # once, anywhere: the hub's shared key
 lhc hub keygen --out ./hub.key
 
-# on each of the two collectors (systemd needed)
+# on each of the two collectors (systemd as root, any version: RHEL 7 too)
 curl -fsSL .../install.sh | bash -s -- --hub-key-file ./hub.key --collector
 
 # on every host, collectors included
