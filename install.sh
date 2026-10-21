@@ -22,7 +22,8 @@
 # GitHub release, verifies the SHA-256, installs /usr/local/bin/lhc, creates
 # /etc/lhc/config.yaml if there is none, applies --set, and runs `lhc install`
 # (systemd timer, or cron on older systems). Re-running it upgrades in place:
-# the config, state and reports are kept.
+# the config, state and reports are kept, and a collector's lhc-collect is
+# restarted on the new binary (no need to pass --collector again).
 #
 # No git, no Go, and no GitHub API: releases/latest/download/... is a plain
 # redirect, so a shared office NAT cannot exhaust an API rate limit.
@@ -45,7 +46,7 @@ SCHEDULE=1
 HUB_KEY=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        -h|--help) sed -n '2,32p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,34p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'; exit 0 ;;
         --set)     shift; [ $# -gt 0 ] || die "--set needs key=value"; SETS+=("$1") ;;
         --set=*)   SETS+=("${1#--set=}") ;;
         --time|--every|--backend)

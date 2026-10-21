@@ -29,7 +29,9 @@ supervisor.
 
 --collector also makes this host a hub collector: it sets
 collector.enabled and runs "lhc collect" as the lhc-collect service. That
-needs systemd and the hub key (lhc hub keygen) in place first.`,
+needs systemd and the hub key (lhc hub keygen) in place first. On a host
+where collector.enabled is already true, every install (an upgrade
+included) rewrites and restarts that service, with or without --collector.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path := a.configPath()
@@ -39,17 +41,20 @@ needs systemd and the hub key (lhc hub keygen) in place first.`,
 				}
 				a.printf("  ✓ Created %s from the example", path)
 			}
-			if collector {
+			if err := a.load(); err != nil {
+				return err
+			}
+			// An upgrade re-runs install without --collector. A collector it
+			// skipped would keep running the replaced binary.
+			why := collectorReason(collector, a.cfg.Collector.Enabled)
+			if why != "" {
 				// Checked before anything is changed: a service without its
 				// key would restart every five seconds, forever.
-				if err := a.load(); err != nil {
-					return err
-				}
 				if schedule.Detect(cmd.Context(), a.runner, isRoot()) != schedule.Systemd {
-					return errors.New("--collector needs systemd 229 or later, as root: lhc collect runs as a service")
+					return fmt.Errorf("%s needs systemd 229 or later, as root: lhc collect runs as a service", why)
 				}
 				if _, err := hub.LoadKey(a.cfg.Hub.KeyFile); err != nil {
-					return fmt.Errorf("--collector needs the hub key first (lhc hub keygen, or copy the hub key file): %w", err)
+					return fmt.Errorf("%s needs the hub key first (lhc hub keygen, or copy the hub key file): %w", why, err)
 				}
 			}
 			var sets []string
@@ -101,7 +106,7 @@ needs systemd and the hub key (lhc hub keygen) in place first.`,
 			if err := in.Install(cmd.Context(), b, a.cfg.Schedule, schedule.Job{Binary: bin, Config: path, Log: a.paths.Log}); err != nil {
 				return err
 			}
-			if collector {
+			if why != "" {
 				if err := in.InstallCollector(cmd.Context(), schedule.Job{Binary: bin, Config: path}); err != nil {
 					return err
 				}
@@ -122,6 +127,18 @@ needs systemd and the hub key (lhc hub keygen) in place first.`,
 	f.StringVar(&backend, "backend", "", "force systemd or cron")
 	f.BoolVar(&collector, "collector", false, "also run the hub collector service (lhc collect)")
 	return cmd
+}
+
+// collectorReason is what makes this host a collector, "--collector" or
+// "collector.enabled", or "" when it is not one.
+func collectorReason(flag, enabled bool) string {
+	switch {
+	case flag:
+		return "--collector"
+	case enabled:
+		return "collector.enabled"
+	}
+	return ""
 }
 
 func newUninstallCmd(a *app) *cobra.Command {
