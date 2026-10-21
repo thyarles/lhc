@@ -139,9 +139,11 @@ checks:
     ignore: []
   processes:
     enabled: true
-    # A few zombies are routine and clear on their own.
-    zombie_caution: 10
-    zombie_unhealthy: 50
+    # A zombie only holds a PID until its parent reaps it or exits, so only a
+    # pile big enough to matter alerts. Fewer show as an INFO count. Set them
+    # lower on a host where any pile is unexpected.
+    zombie_caution: 2500
+    zombie_unhealthy: 3000
   services:
     enabled: true
   docker:
