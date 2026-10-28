@@ -107,11 +107,13 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	}
 
 	if authLog == "" {
-		// Not a fault on journald-only systems, where journalctl is the source.
+		// A missing subsystem, not a fault: journald-only systems use
+		// journalctl, and minimal hosts and containers log no auth at all.
+		// CAUTION kept such hosts yellow forever (#7).
 		if _, ok := r.LookPath("journalctl"); ok {
 			s.Add("Auth Log", "Not found — using journalctl", check.Info)
 		} else {
-			s.Add("Auth Log", "Not found (/var/log/auth.log or /var/log/secure)", check.Caution)
+			s.Add("Auth Log", "Not found (/var/log/auth.log or /var/log/secure)", check.Info)
 		}
 	}
 	return s
