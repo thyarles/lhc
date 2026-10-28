@@ -2,7 +2,9 @@ package hub
 
 import (
 	"errors"
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -197,5 +199,84 @@ func TestTheDigestIsSentOncePerSlotAndRetriedEvery30Minutes(t *testing.T) {
 		if got := DigestDue(c.now, slot, c.sent, c.last); got != c.want {
 			t.Errorf("%s: got %v", c.name, got)
 		}
+	}
+}
+
+func versioned(host, version string) Entry {
+	e := entry(host, "ok", time.Hour)
+	e.Version = version
+	return e
+}
+
+func TestOneVersionEverywhereNeedsNoVersionsLine(t *testing.T) {
+	d, _ := digest([]Entry{versioned("a.example.com", "1.0.0"), versioned("b.example.com", "1.0.0")}, DigestState{})
+	if d.VersionsLine() != "" {
+		t.Fatal(d.VersionsLine())
+	}
+}
+
+// After an upgrade loop, the hosts it skipped look like every other host.
+func TestTheDigestNamesTheHostsBehindTheNewestVersion(t *testing.T) {
+	var es []Entry
+	for i := range 4 {
+		es = append(es, versioned(fmt.Sprintf("new%d.example.com", i), "0.10.0"))
+	}
+	es = append(es,
+		versioned("a.example.com", "0.9.1"),
+		versioned("b.example.com", "dev"),
+		versioned("c.example.com", ""),
+		versioned("d.example.com", "0.9.10"),
+		versioned("e.example.com", "0.8.1"),
+		versioned("f.example.com", "0.8.1"),
+	)
+	broken := entry("g.example.com", "", time.Hour)
+	broken.Err = errors.New("unexpected end of JSON input")
+	es = append(es, broken)
+	slices.SortFunc(es, func(a, b Entry) int { return strings.Compare(a.Host, b.Host) })
+
+	d, _ := digest(es, DigestState{})
+	want := "lhc 0.10.0 on 4 hosts · older: a.example.com (0.9.1), b.example.com (dev), c.example.com (unknown), d.example.com (0.9.10), e.example.com (0.8.1) (+1 more)"
+	if got := d.VersionsLine(); got != want {
+		t.Fatalf("got  %q\nwant %q", got, want)
+	}
+}
+
+func TestNoReleaseVersionAnywhereNeedsNoVersionsLine(t *testing.T) {
+	d, _ := digest([]Entry{versioned("a.example.com", "dev"), versioned("b.example.com", "")}, DigestState{})
+	if d.VersionsLine() != "" {
+		t.Fatal(d.VersionsLine())
+	}
+}
+
+// Upgraded binary, old process: the collectors kept running a release with
+// no digest code, and nothing on the hub said so (#36).
+func TestACollectorRunningAnOlderProcessThanItsBinarySaysSo(t *testing.T) {
+	d, _ := digest([]Entry{versioned("c1.example.com", "1.1.0")}, DigestState{})
+	self := d.Collectors[0]
+	if self.Status() != check.Caution || d.PeerText(self) != "this one · running lhc 1.0.0, installed 1.1.0: restart lhc-collect" {
+		t.Fatalf("%v %q", self.Status(), d.PeerText(self))
+	}
+	if d.Overall != check.Caution {
+		t.Fatalf("overall %v", d.Overall)
+	}
+	for _, v := range []string{"1.0.0", "0.9.1", "dev", ""} {
+		d, _ := digest([]Entry{versioned("c1.example.com", v)}, DigestState{})
+		if p := d.Collectors[0]; p.Status() != check.OK || d.PeerText(p) != "this one" {
+			t.Fatalf("own report %q: %v %q", v, p.Status(), d.PeerText(p))
+		}
+	}
+}
+
+func TestSemver(t *testing.T) {
+	for v, want := range map[string]bool{
+		"0.9.1": true, "v1.2.3": true, "0.9.1-3-gabcdef": true, "0.9.1-dirty": true,
+		"dev": false, "": false, "1.2": false, "1.2.x": false, "1.2.3.4": false,
+	} {
+		if _, ok := semver(v); ok != want {
+			t.Errorf("semver(%q) ok = %v", v, ok)
+		}
+	}
+	if !newer("0.10.0", "0.9.9") || newer("0.9.1", "0.9.1") || newer("1.0.0", "dev") {
+		t.Fatal("newer")
 	}
 }

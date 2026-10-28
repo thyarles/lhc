@@ -156,7 +156,7 @@ func TestEveryCollectorStoresEveryHost(t *testing.T) {
 		}
 	}
 	col1.run(0, "hub", "status")
-	for _, want := range []string{"HOST", "a.example.com", "b.example.com", "unhealthy", "just now"} {
+	for _, want := range []string{"HOST", "VERSION", "a.example.com", "b.example.com", "unhealthy", "just now"} {
 		if !strings.Contains(col1.stdout, want) {
 			t.Fatalf("hub status lacks %q:\n%s", want, col1.stdout)
 		}

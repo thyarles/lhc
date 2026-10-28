@@ -17,7 +17,7 @@ func goldenDigest() *Digest {
 		Collector: "lhc-c1.example.com", Version: "1.2.3", Generated: digestNow, SilentAfter: 26 * time.Hour,
 		Overall: check.Unhealthy,
 		Collectors: []DigestPeer{
-			{Host: "lhc-c1.example.com", Self: true, Last: digestNow.Add(-6 * time.Hour)},
+			{Host: "lhc-c1.example.com", Self: true, Last: digestNow.Add(-6 * time.Hour), Running: "1.2.3", Installed: "1.3.0"},
 			{Host: "lhc-c2.example.com", Last: digestNow.Add(-5 * time.Hour)},
 			{Host: "lhc-c3.example.com", Last: digestNow.Add(-50 * time.Hour), Silent: true},
 		},
@@ -33,6 +33,9 @@ func goldenDigest() *Digest {
 		OK:        36,
 		UptimeMin: 3 * time.Hour, UptimeMax: 1320 * 24 * time.Hour,
 		Updates: 1400, Reboot: 3,
+		Newest: "1.3.0", NewestHosts: 33,
+		Older:     []string{"db01.example.com (1.2.3)", "lhc-c3.example.com (1.2.3)", "web01.example.com (1.2.3)", "web02.example.com (dev)", "web03.example.com (unknown)"},
+		OlderMore: 2,
 	}
 }
 

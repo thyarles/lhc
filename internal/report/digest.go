@@ -29,7 +29,17 @@ type Digest struct {
 	UptimeMin, UptimeMax time.Duration
 	Updates              int
 	Reboot               int // hosts waiting for a reboot
+	// The newest lhc any host runs and how many run it; "" when every host
+	// runs the same version. Older is "host (version)" for the hosts behind
+	// it, at most OlderListed, by name; OlderMore counts the rest.
+	Newest      string
+	NewestHosts int
+	Older       []string
+	OlderMore   int
 }
+
+// OlderListed is how many hosts behind the newest version the digest names.
+const OlderListed = 5
 
 // DigestHost is one host the digest names.
 type DigestHost struct {
@@ -48,6 +58,10 @@ type DigestPeer struct {
 	Self   bool
 	Last   time.Time // zero: never reported here
 	Silent bool
+	// Set on this collector when its own host report, made by the installed
+	// binary, is newer than the running `lhc collect`: an upgrade that did
+	// not restart the service (#36).
+	Running, Installed string
 }
 
 // Count is how many hosts are at a status, the silent ones apart.
@@ -103,8 +117,11 @@ func (d *Digest) Since(t time.Time) string {
 
 // Status is a collector's state in the digest.
 func (p DigestPeer) Status() check.Status {
-	if p.Silent {
+	switch {
+	case p.Silent:
 		return check.Unhealthy
+	case p.Installed != "":
+		return check.Caution
 	}
 	return check.OK
 }
@@ -116,6 +133,8 @@ func (d *Digest) PeerText(p DigestPeer) string {
 		return "SILENT, never reported here"
 	case p.Silent:
 		return "SILENT since " + d.Since(p.Last)
+	case p.Self && p.Installed != "":
+		return "this one · running lhc " + p.Running + ", installed " + p.Installed + ": restart lhc-collect"
 	case p.Self:
 		return "this one"
 	}
@@ -136,6 +155,19 @@ func (d *Digest) Totals() string {
 		parts = append(parts, plural(d.Reboot, "host")+" waiting for a reboot")
 	}
 	return strings.Join(parts, " · ")
+}
+
+// VersionsLine names the hosts behind the newest lhc, or "" when every
+// host runs the same version.
+func (d *Digest) VersionsLine() string {
+	if d.Newest == "" {
+		return ""
+	}
+	s := fmt.Sprintf("lhc %s on %s · older: %s", d.Newest, plural(d.NewestHosts, "host"), strings.Join(d.Older, ", "))
+	if d.OlderMore > 0 {
+		s += fmt.Sprintf(" (+%d more)", d.OlderMore)
+	}
+	return s
 }
 
 // Ago reads like a person would say it: 45m, 3h, 2d 4h.
@@ -237,7 +269,10 @@ func DigestText(d *Digest) string {
 	}
 
 	lines = append(lines, "", "  EVERYONE ELSE", "  "+plural(d.OK, "host")+" OK")
-	if t := d.Totals(); t != "" {
+	for _, t := range []string{d.Totals(), d.VersionsLine()} {
+		if t == "" {
+			continue
+		}
 		wrapped := tw.Wrap(t, W-2, "  ")
 		wrapped[0] = "  " + wrapped[0]
 		lines = append(lines, wrapped...)

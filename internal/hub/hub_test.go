@@ -370,3 +370,19 @@ func TestARefusalExplainsItself(t *testing.T) {
 		t.Fatalf("%+v", outs)
 	}
 }
+
+func TestTheStoreReadsEachHostsVersion(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	withVersion := []byte(`{"schema":1,"host":"web01","overall":"ok","version":"0.9.1","generated_at":"2026-01-05T07:00:00Z","sections":[]}`)
+	if err := s.Put("web01", Stored{Report: withVersion}); err != nil {
+		t.Fatal(err)
+	}
+	// A report from an lhc that did not send the field still loads.
+	if err := s.Put("web02", Stored{Report: sample("web02")}); err != nil {
+		t.Fatal(err)
+	}
+	l, err := s.List()
+	if err != nil || len(l) != 2 || l[0].Version != "0.9.1" || l[1].Version != "" || l[1].Err != nil {
+		t.Fatalf("%+v %v", l, err)
+	}
+}

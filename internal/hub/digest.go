@@ -112,7 +112,14 @@ func BuildDigest(entries []Entry, prev DigestState, o DigestOptions) (*report.Di
 	}
 	slices.SortStableFunc(d.NotOK, func(a, b report.DigestHost) int { return int(b.Status) - int(a.Status) })
 
-	d.Collectors = []report.DigestPeer{{Host: o.Self, Self: true, Last: last[o.Self]}}
+	versions(d, entries)
+	self := report.DigestPeer{Host: o.Self, Self: true, Last: last[o.Self]}
+	for _, e := range entries {
+		if e.Host == o.Self && e.Err == nil && newer(e.Version, o.Version) {
+			self.Running, self.Installed = o.Version, e.Version
+		}
+	}
+	d.Collectors = []report.DigestPeer{self}
 	for _, p := range o.Peers {
 		if p == o.Self {
 			continue
@@ -129,11 +136,78 @@ func BuildDigest(entries []Entry, prev DigestState, o DigestOptions) (*report.Di
 		d.Overall = check.Unhealthy
 	}
 	for _, p := range d.Collectors {
-		if p.Silent {
-			d.Overall = check.Unhealthy
-		}
+		d.Overall = check.Worse(d.Overall, p.Status())
 	}
 	return d, next
+}
+
+// versions fills the digest's versions line: the hosts behind the newest lhc
+// any host runs. A dev build or a report without a version counts as older.
+func versions(d *report.Digest, entries []Entry) {
+	var newest [3]int
+	found := false
+	label := ""
+	for _, e := range entries {
+		if v, ok := semver(e.Version); ok && e.Err == nil && (!found || slices.Compare(v[:], newest[:]) > 0) {
+			newest, found, label = v, true, e.Version
+		}
+	}
+	if !found {
+		return
+	}
+	n := 0
+	var older []string
+	for _, e := range entries {
+		if e.Err != nil {
+			continue
+		}
+		if v, ok := semver(e.Version); ok && v == newest {
+			n++
+			continue
+		}
+		v := e.Version
+		if v == "" {
+			v = "unknown"
+		}
+		older = append(older, e.Host+" ("+v+")")
+	}
+	if len(older) == 0 {
+		return
+	}
+	d.Newest, d.NewestHosts = strings.TrimPrefix(label, "v"), n
+	if len(older) > report.OlderListed {
+		d.OlderMore = len(older) - report.OlderListed
+		older = older[:report.OlderListed]
+	}
+	d.Older = older
+}
+
+// newer says whether version a is later than b; false when either is not
+// a release version (dev, empty).
+func newer(a, b string) bool {
+	va, okA := semver(a)
+	vb, okB := semver(b)
+	return okA && okB && slices.Compare(va[:], vb[:]) > 0
+}
+
+// semver reads a release version such as 0.9.1 or v0.9.1. A suffix (a
+// local build's 0.9.1-3-gabcdef) is ignored.
+func semver(v string) ([3]int, bool) {
+	v, _, _ = strings.Cut(strings.TrimPrefix(v, "v"), "-")
+	v, _, _ = strings.Cut(v, "+")
+	parts := strings.Split(v, ".")
+	if len(parts) != 3 {
+		return [3]int{}, false
+	}
+	var out [3]int
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 {
+			return [3]int{}, false
+		}
+		out[i] = n
+	}
+	return out, true
 }
 
 // status is a host's overall status; a report that cannot be read counts

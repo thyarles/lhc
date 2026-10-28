@@ -93,13 +93,17 @@ func newHubStatusCmd(a *app) *cobra.Command {
 			}
 			now := a.now()
 			w := tabwriter.NewWriter(a.stdout, 0, 0, 2, ' ', 0)
-			_, _ = fmt.Fprintln(w, "HOST\tLAST REPORT\tOVERALL\tAGE")
+			_, _ = fmt.Fprintln(w, "HOST\tLAST REPORT\tOVERALL\tVERSION\tAGE")
 			for _, e := range entries {
 				if e.Err != nil {
-					_, _ = fmt.Fprintf(w, "%s\t-\tunreadable: %v\t-\n", e.Host, e.Err)
+					_, _ = fmt.Fprintf(w, "%s\t-\tunreadable: %v\t-\t-\n", e.Host, e.Err)
 					continue
 				}
-				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", e.Host, e.ReceivedAt.Local().Format("2006-01-02 15:04"), e.Overall, report.Ago(now.Sub(e.ReceivedAt)))
+				v := e.Version
+				if v == "" {
+					v = "-"
+				}
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", e.Host, e.ReceivedAt.Local().Format("2006-01-02 15:04"), e.Overall, v, report.Ago(now.Sub(e.ReceivedAt)))
 			}
 			return w.Flush()
 		},

@@ -6,7 +6,8 @@
 ==============================================================================
 
   COLLECTORS
-  ✓  lhc-c1.example.com             this one
+  !  lhc-c1.example.com             this one · running lhc 1.2.3, installed
+                                    1.3.0: restart lhc-collect
   ✓  lhc-c2.example.com             last report 2026-10-21 04:00 (5h ago)
   ✕  lhc-c3.example.com             SILENT since 2026-10-19 07:00 (2d 2h ago)
        this may be the only digest today
@@ -29,6 +30,9 @@
   36 hosts OK
   uptime 3 hours to 1320 days · 1400 pending updates · 3 hosts waiting for a
   reboot
+  lhc 1.3.0 on 33 hosts · older: db01.example.com (1.2.3), lhc-c3.example.com
+  (1.2.3), web01.example.com (1.2.3), web02.example.com (dev),
+  web03.example.com (unknown) (+2 more)
 
   A host that was shut down for good stays SILENT here until you run
   `lhc hub forget HOST` on each collector.
