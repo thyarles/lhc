@@ -51,7 +51,7 @@ func Send(ctx context.Context, collectors []string, e *Envelope, timeout time.Du
 	out := make([]Outcome, 0, len(collectors))
 	for _, c := range collectors {
 		if err == nil {
-			out = append(out, Outcome{Collector: c, Err: post(ctx, c, body, timeout)})
+			out = append(out, Outcome{Collector: c, Err: post(ctx, c, Path, body, timeout)})
 		} else {
 			out = append(out, Outcome{Collector: c, Err: err})
 		}
@@ -59,10 +59,10 @@ func Send(ctx context.Context, collectors []string, e *Envelope, timeout time.Du
 	return out
 }
 
-func post(ctx context.Context, collector string, body []byte, timeout time.Duration) error {
+func post(ctx context.Context, collector, path string, body []byte, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(collector, "/")+Path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(collector, "/")+path, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -81,6 +81,11 @@ func post(ctx context.Context, collector string, body []byte, timeout time.Durat
 	switch resp.StatusCode {
 	case http.StatusNoContent:
 		return nil
+	case http.StatusNotFound:
+		if path == NoticePath {
+			return errOldPeer
+		}
+		return fmt.Errorf("answered %s: is this an lhc collector?", resp.Status)
 	case http.StatusBadRequest:
 		// The collector never says why; its log does.
 		return fmt.Errorf("refused (400): wrong hub key, clocks more than %s apart, or a report too large; the collector's log says which", MaxSkew)

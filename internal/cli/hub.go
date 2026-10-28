@@ -92,6 +92,21 @@ func newHubStatusCmd(a *app) *cobra.Command {
 				return nil
 			}
 			now := a.now()
+			if a.cfg.Collector.Enabled {
+				for _, l := range a.turnLines(store) {
+					a.printf("%s", l)
+				}
+				for _, e := range entries {
+					switch {
+					case e.Host != a.label() || !e.RelayChecked:
+					case e.RelayErr != "":
+						a.printf("  Relay: unreachable at %s → %s", e.Generated.In(now.Location()).Format("15:04"), e.RelayErr)
+					default:
+						a.printf("  Relay: reachable (checked %s)", e.Generated.In(now.Location()).Format("15:04"))
+					}
+				}
+				a.printf("")
+			}
 			w := tabwriter.NewWriter(a.stdout, 0, 0, 2, ' ', 0)
 			_, _ = fmt.Fprintln(w, "HOST\tLAST REPORT\tOVERALL\tVERSION\tAGE")
 			for _, e := range entries {

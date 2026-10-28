@@ -51,7 +51,30 @@ var _ notify.Notifier = (*Sender)(nil)
 // Send delivers m. A nil error means the relay accepted the message for
 // every recipient.
 func (s *Sender) Send(ctx context.Context, m notify.Message) error {
-	err := s.send(ctx, m)
+	return s.retry(ctx, func() error { return s.send(ctx, m) })
+}
+
+// Probe checks that this host could send through the relay: it connects,
+// says EHLO, does STARTTLS and AUTH as configured, and quits. It never
+// sends MAIL FROM, so no message is ever sent.
+func (s *Sender) Probe(ctx context.Context) error {
+	return s.retry(ctx, func() error {
+		c, cancel, err := s.session(ctx)
+		if err != nil {
+			return err
+		}
+		defer cancel()
+		defer func() { _ = c.Close() }()
+		if err := c.Quit(); err != nil {
+			return fmt.Errorf("QUIT: %w", err)
+		}
+		return nil
+	})
+}
+
+// retry runs try once more after s.Retry when the relay answered 4xx.
+func (s *Sender) retry(ctx context.Context, try func() error) error {
+	err := try()
 	if err == nil || s.Retry <= 0 || !Temporary(err) {
 		return err
 	}
@@ -65,7 +88,7 @@ func (s *Sender) Send(ctx context.Context, m notify.Message) error {
 		return err
 	case <-t.C:
 	}
-	return s.send(ctx, m)
+	return try()
 }
 
 // Temporary reports a 4xx reply: the relay asks to be tried again later
@@ -79,63 +102,12 @@ func (s *Sender) send(ctx context.Context, m notify.Message) error {
 	if len(m.To) == 0 {
 		return errors.New("no recipients")
 	}
-	timeout := s.Timeout
-	if timeout == 0 {
-		timeout = 30 * time.Second
+	c, cancel, err := s.session(ctx)
+	if err != nil {
+		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-
-	host := s.Host
-	if host == "" {
-		host = "localhost"
-	}
-	addr := net.JoinHostPort(host, strconv.Itoa(s.Port))
-	tlsCfg := &tls.Config{ServerName: host, InsecureSkipVerify: s.TLSSkipVerify, MinVersion: tls.VersionTLS12} //nolint:gosec // opt-in for relays with self-signed certificates
-
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "tcp", addr)
-	if err != nil {
-		return fmt.Errorf("connect %s: %w", addr, err)
-	}
-	if dl, ok := ctx.Deadline(); ok {
-		_ = conn.SetDeadline(dl)
-	}
-	if s.TLS == "implicit" {
-		tc := tls.Client(conn, tlsCfg)
-		if err := tc.HandshakeContext(ctx); err != nil {
-			_ = conn.Close()
-			return fmt.Errorf("tls %s: %w", addr, err)
-		}
-		conn = tc
-	}
-	c, err := smtp.NewClient(conn, host)
-	if err != nil {
-		_ = conn.Close()
-		return fmt.Errorf("smtp %s: %w", addr, err)
-	}
 	defer func() { _ = c.Close() }()
-
-	hello := s.HelloName
-	if hello == "" {
-		hello = "localhost"
-	}
-	if err := c.Hello(hello); err != nil {
-		return fmt.Errorf("EHLO: %w", err)
-	}
-	if s.TLS == "starttls" {
-		if ok, _ := c.Extension("STARTTLS"); !ok {
-			return fmt.Errorf("%s does not offer STARTTLS", addr)
-		}
-		if err := c.StartTLS(tlsCfg); err != nil {
-			return fmt.Errorf("STARTTLS: %w", err)
-		}
-	}
-	if s.Username != "" {
-		if err := c.Auth(chooseAuth(c, s.Username, s.Password, host)); err != nil {
-			return fmt.Errorf("AUTH: %w", err)
-		}
-	}
 	if err := c.Mail(m.From); err != nil {
 		return fmt.Errorf("MAIL FROM: %w", err)
 	}
@@ -165,6 +137,80 @@ func (s *Sender) send(ctx context.Context, m notify.Message) error {
 	// The message is accepted at this point; a failed QUIT changes nothing.
 	_ = c.Quit()
 	return nil
+}
+
+// session opens a client ready for MAIL FROM: connected, greeted, TLS and
+// AUTH done as configured, all within s.Timeout. The caller closes the
+// client and calls cancel.
+func (s *Sender) session(ctx context.Context) (*smtp.Client, context.CancelFunc, error) {
+	timeout := s.Timeout
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	c, err := s.open(ctx)
+	if err != nil {
+		cancel()
+		return nil, nil, err
+	}
+	return c, cancel, nil
+}
+
+func (s *Sender) open(ctx context.Context) (*smtp.Client, error) {
+	host := s.Host
+	if host == "" {
+		host = "localhost"
+	}
+	addr := net.JoinHostPort(host, strconv.Itoa(s.Port))
+	tlsCfg := &tls.Config{ServerName: host, InsecureSkipVerify: s.TLSSkipVerify, MinVersion: tls.VersionTLS12} //nolint:gosec // opt-in for relays with self-signed certificates
+
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("connect %s: %w", addr, err)
+	}
+	if dl, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(dl)
+	}
+	if s.TLS == "implicit" {
+		tc := tls.Client(conn, tlsCfg)
+		if err := tc.HandshakeContext(ctx); err != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("tls %s: %w", addr, err)
+		}
+		conn = tc
+	}
+	c, err := smtp.NewClient(conn, host)
+	if err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("smtp %s: %w", addr, err)
+	}
+
+	hello := s.HelloName
+	if hello == "" {
+		hello = "localhost"
+	}
+	if err := c.Hello(hello); err != nil {
+		_ = c.Close()
+		return nil, fmt.Errorf("EHLO: %w", err)
+	}
+	if s.TLS == "starttls" {
+		if ok, _ := c.Extension("STARTTLS"); !ok {
+			_ = c.Close()
+			return nil, fmt.Errorf("%s does not offer STARTTLS", addr)
+		}
+		if err := c.StartTLS(tlsCfg); err != nil {
+			_ = c.Close()
+			return nil, fmt.Errorf("STARTTLS: %w", err)
+		}
+	}
+	if s.Username != "" {
+		if err := c.Auth(chooseAuth(c, s.Username, s.Password, host)); err != nil {
+			_ = c.Close()
+			return nil, fmt.Errorf("AUTH: %w", err)
+		}
+	}
+	return c, nil
 }
 
 func chooseAuth(c *smtp.Client, user, pass, host string) smtp.Auth {

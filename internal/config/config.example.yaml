@@ -113,6 +113,16 @@ collector:
   # report, so a dead collector shows up in the others' digests.
   # e.g. ["lhc-c2.example.com", "lhc-c3.example.com"]
   peers: []
+  # one  — one digest per hub: the first collector by name (this host and
+  #        peers, sorted) sends at digest_time and tells the others over the
+  #        hub port; the next sends takeover_after later only if it heard
+  #        nothing, and so on. A lost notice can only add a mail, never lose
+  #        one. Each collector's nightly run also checks it can reach the
+  #        relay, and the digest flags one that cannot.
+  # each — every collector sends its own digest.
+  # Give every collector of a hub the same digest_time and takeover_after.
+  digest_mode: one
+  takeover_after: 15m
 
 checks:
   system:

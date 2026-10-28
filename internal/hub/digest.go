@@ -61,6 +61,12 @@ type DigestOptions struct {
 	SilentAfter time.Duration
 	Version     string
 	Now         time.Time
+	// OnePerHub: collector.digest_mode one, with this collector at Rank in
+	// Order and its turn at Slot.
+	OnePerHub bool
+	Order     []string
+	Rank      int
+	Slot      time.Time
 }
 
 // BuildDigest classifies every host and returns the digest, plus the state
@@ -113,7 +119,13 @@ func BuildDigest(entries []Entry, prev DigestState, o DigestOptions) (*report.Di
 	slices.SortStableFunc(d.NotOK, func(a, b report.DigestHost) int { return int(b.Status) - int(a.Status) })
 
 	versions(d, entries)
-	self := report.DigestPeer{Host: o.Self, Self: true, Last: last[o.Self]}
+	relay := map[string]string{}
+	for _, e := range entries {
+		if e.Err == nil {
+			relay[e.Host] = e.RelayErr
+		}
+	}
+	self := report.DigestPeer{Host: o.Self, Self: true, Last: last[o.Self], RelayErr: relay[o.Self]}
 	for _, e := range entries {
 		if e.Host == o.Self && e.Err == nil && newer(e.Version, o.Version) {
 			self.Running, self.Installed = o.Version, e.Version
@@ -125,7 +137,18 @@ func BuildDigest(entries []Entry, prev DigestState, o DigestOptions) (*report.Di
 			continue
 		}
 		t := last[p]
-		d.Collectors = append(d.Collectors, report.DigestPeer{Host: p, Last: t, Silent: t.IsZero() || o.Now.Sub(t) > o.SilentAfter})
+		d.Collectors = append(d.Collectors, report.DigestPeer{Host: p, Last: t, Silent: t.IsZero() || o.Now.Sub(t) > o.SilentAfter, RelayErr: relay[p]})
+	}
+	if o.OnePerHub {
+		d.OnePerHub, d.Slot = true, o.Slot
+		for i, c := range o.Order {
+			switch {
+			case i < o.Rank:
+				d.Missed = append(d.Missed, c)
+			case i > o.Rank:
+				d.Standby = append(d.Standby, c)
+			}
+		}
 	}
 
 	d.Overall = check.OK

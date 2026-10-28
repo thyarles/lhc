@@ -309,9 +309,9 @@ your collectors' real addresses there. lhc refuses the documentation ranges
   and each collector is independent, so losing one loses nothing.
 - **Separate networks.** Where VLANs must not talk to each other, give each
   VLAN its own pair of collectors and list only those on its hosts.
-- **One way only.** A collector answers `POST /v1/report` with 204 or an
-  empty 400, and 404 to anything else. It never sends a host anything to act
-  on.
+- **One way only.** A collector answers `POST /v1/report` (and, from another
+  collector, `POST /v1/digest-sent`) with 204 or an empty 400, and 404 to
+  anything else. It never sends a host anything to act on.
 - **Encrypted end to end.** Each report is gzipped and sealed with AES-256-GCM
   under the shared key, with the host name and the time bound to it. Plain
   HTTP is therefore enough. Without the key a report can be neither read nor
@@ -327,8 +327,8 @@ your collectors' real addresses there. lhc refuses the documentation ranges
 
 ### The daily digest
 
-Every day at `collector.digest_time` (09:00) each collector mails one
-digest, tagged `[hub]`, to `collector.digest_recipients` (or
+Every day at `collector.digest_time` (09:00) the hub mails one digest,
+tagged `[hub]`, to `collector.digest_recipients` (or
 `email.daily_recipients`):
 
 ```
@@ -343,11 +343,43 @@ and one line for everyone else, with uptimes, pending updates and pending
 reboots summed. A host's own `[ACTION]` alerts still go out from the host:
 the digest is a summary, never the alert path.
 
-With several collectors each sends its own digest. List the others in
-`collector.peers` on each one: when a collector dies, the others' digests
-say so in the subject (`· peer lhc-c2.example.com SILENT`). A relay that
-refuses the digest is retried every 30 minutes until the next day's.
-`lhc hub digest --dry-run` prints the digest as it stands.
+List the other collectors in `collector.peers` on each one: when a
+collector dies, the digest says so in the subject
+(`· peer lhc-c2.example.com SILENT`). A relay that refuses the digest is
+retried every 30 minutes until the next day's. `lhc hub digest --dry-run`
+prints the digest as it stands.
+
+**One digest per hub** (`collector.digest_mode: one`, the default). The
+collectors take turns by name: each sorts its own name and its peers', so
+they all agree without any per-host setting.
+
+- The first sends at `digest_time`. Once the relay accepted it, it posts an
+  encrypted "digest sent" notice to every address in `hub.collectors`, on
+  the hub port and under the hub key.
+- The second's turn is `collector.takeover_after` (15m) later, the third's
+  15 minutes after that. At its turn, and before every retry, a collector
+  that holds the day's notice stays quiet. One that holds none sends the
+  digest and tells the others in turn.
+- The digest's footer says who sent it: `Sent by lhc-c1.example.com ·
+  standby lhc-c2.example.com, lhc-c3.example.com`, or after a takeover,
+  `Sent by lhc-c2.example.com: no digest from lhc-c1.example.com by 09:15`.
+- **It fails toward an extra mail, never toward none.** A lost notice, an
+  older lhc on a peer (it answers 404 and sends its own), or peer lists that
+  disagree can only mean a second copy.
+- "Sent" means the relay accepted the mail. A digest lost after that (a
+  spam folder, a mailbox rule) is not resent.
+- Each collector's nightly run checks it could send if its turn came: it
+  connects to the relay, says hello, logs in when a username is set, and
+  hangs up, never sending a message. Its report gets a `Digest Relay` row,
+  and the alert `Digest relay unreachable from this collector` at CAUTION
+  when that fails. The digest marks that collector `relay unreachable`,
+  so a broken standby shows up before it has to take over.
+- `lhc hub status` shows the order, this collector's turn, who sent today's
+  digest and the last relay check. To see a takeover, stop `lhc-collect` on
+  the first collector: the second sends at 09:15.
+
+Give every collector of a hub the same `digest_time` and `takeover_after`.
+`collector.digest_mode: each` goes back to one digest per collector.
 
 After an upgrade, the digest shows who was left behind. When the hosts do
 not all run the same lhc, "everyone else" ends with a line such as

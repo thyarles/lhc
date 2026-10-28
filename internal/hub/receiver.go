@@ -63,13 +63,24 @@ func (r *Receiver) Configure(key []byte, limit int64) {
 }
 
 func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	if req.URL.Path != Path || req.Method != http.MethodPost {
+	if (req.URL.Path != Path && req.URL.Path != NoticePath) || req.Method != http.MethodPost {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	ip, _, err := net.SplitHostPort(req.RemoteAddr)
 	if err != nil {
 		ip = req.RemoteAddr
+	}
+	if req.URL.Path == NoticePath {
+		n, err := r.acceptNotice(w, req, ip)
+		if err != nil {
+			r.Log("rejected digest notice from %s: %v", ip, err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		r.Log("digest for %s already sent by %s at %s", n.Date, n.By, n.At.In(r.Now().Location()).Format("15:04"))
+		w.WriteHeader(http.StatusNoContent)
+		return
 	}
 	host, overall, err := r.accept(w, req, ip)
 	if err != nil {
@@ -81,43 +92,30 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (r *Receiver) accept(w http.ResponseWriter, req *http.Request, ip string) (host, overall string, err error) {
-	now := r.Now()
-	r.mu.Lock()
-	key, limit := r.key, r.limit
-	r.prune(now)
-	allowed := r.count(ip, now)
-	r.mu.Unlock()
-	if !allowed {
-		return "", "", fmt.Errorf("more than %d requests in a minute", RatePerMinute)
+// acceptNotice opens and records a peer's "digest sent" notice, with the
+// same checks as a report.
+func (r *Receiver) acceptNotice(w http.ResponseWriter, req *http.Request, ip string) (Notice, error) {
+	e, plain, err := r.open(w, req, ip)
+	if err != nil {
+		return Notice{}, err
 	}
+	n, err := readNotice(e, plain)
+	if err != nil {
+		return Notice{}, err
+	}
+	if err := r.fresh(e); err != nil {
+		return Notice{}, err
+	}
+	if err := r.Store.SaveNotice(n); err != nil {
+		return Notice{}, fmt.Errorf("%s: storing the notice: %w", e.Host, err)
+	}
+	return n, nil
+}
 
-	body, err := io.ReadAll(http.MaxBytesReader(w, req.Body, limit))
+func (r *Receiver) accept(w http.ResponseWriter, req *http.Request, ip string) (host, overall string, err error) {
+	e, report, err := r.open(w, req, ip)
 	if err != nil {
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
-			return "", "", fmt.Errorf("request larger than collector.max_report_size (%d bytes)", limit)
-		}
-		return "", "", fmt.Errorf("reading the request: %w", err)
-	}
-	var e Envelope
-	dec := json.NewDecoder(bytes.NewReader(body))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&e); err != nil {
-		return "", "", fmt.Errorf("not an envelope: %w", err)
-	}
-	sent, err := time.Parse(time.RFC3339, e.SentAt)
-	if err != nil {
-		return "", "", fmt.Errorf("sent_at %q: %w", e.SentAt, err)
-	}
-	if skew := now.Sub(sent); skew > MaxSkew || skew < -MaxSkew {
-		return "", "", fmt.Errorf("%s: sent_at is %s from this collector's clock (limit %s); check NTP on both", e.Host, skew.Round(time.Second), MaxSkew)
-	}
-	// Decrypt before looking at the nonce: only a genuine envelope may take
-	// a place in the replay cache.
-	report, err := Open(key, &e, limit)
-	if err != nil {
-		return "", "", fmt.Errorf("%s: %w", e.Host, err)
+		return "", "", err
 	}
 	var sum summary
 	if err := json.Unmarshal(report, &sum); err != nil {
@@ -129,22 +127,68 @@ func (r *Receiver) accept(w http.ResponseWriter, req *http.Request, ip string) (
 	if sum.Host != e.Host {
 		return "", "", fmt.Errorf("%s: the report inside is for %q", e.Host, sum.Host)
 	}
-
-	r.mu.Lock()
-	nonce := string(e.Nonce)
-	_, replayed := r.nonces[nonce]
-	if !replayed {
-		r.nonces[nonce] = now
+	if err := r.fresh(e); err != nil {
+		return "", "", err
 	}
-	r.mu.Unlock()
-	if replayed {
-		return "", "", fmt.Errorf("%s: replayed request (nonce already seen)", e.Host)
-	}
-
-	if err := r.Store.Put(e.Host, Stored{ReceivedAt: now, RemoteAddr: ip, Report: report}); err != nil {
+	if err := r.Store.Put(e.Host, Stored{ReceivedAt: r.Now(), RemoteAddr: ip, Report: report}); err != nil {
 		return "", "", fmt.Errorf("%s: storing the report: %w", e.Host, err)
 	}
 	return e.Host, sum.Overall, nil
+}
+
+// fresh takes the envelope's nonce, refusing one already seen. Called only
+// for a genuine, well-formed envelope, so nothing else can fill the cache.
+func (r *Receiver) fresh(e *Envelope) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	nonce := string(e.Nonce)
+	if _, replayed := r.nonces[nonce]; replayed {
+		return fmt.Errorf("%s: replayed request (nonce already seen)", e.Host)
+	}
+	r.nonces[nonce] = r.Now()
+	return nil
+}
+
+// open reads, rate-limits, checks the clock of and decrypts one envelope.
+func (r *Receiver) open(w http.ResponseWriter, req *http.Request, ip string) (*Envelope, []byte, error) {
+	now := r.Now()
+	r.mu.Lock()
+	key, limit := r.key, r.limit
+	r.prune(now)
+	allowed := r.count(ip, now)
+	r.mu.Unlock()
+	if !allowed {
+		return nil, nil, fmt.Errorf("more than %d requests in a minute", RatePerMinute)
+	}
+
+	body, err := io.ReadAll(http.MaxBytesReader(w, req.Body, limit))
+	if err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			return nil, nil, fmt.Errorf("request larger than collector.max_report_size (%d bytes)", limit)
+		}
+		return nil, nil, fmt.Errorf("reading the request: %w", err)
+	}
+	var e Envelope
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&e); err != nil {
+		return nil, nil, fmt.Errorf("not an envelope: %w", err)
+	}
+	sent, err := time.Parse(time.RFC3339, e.SentAt)
+	if err != nil {
+		return nil, nil, fmt.Errorf("sent_at %q: %w", e.SentAt, err)
+	}
+	if skew := now.Sub(sent); skew > MaxSkew || skew < -MaxSkew {
+		return nil, nil, fmt.Errorf("%s: sent_at is %s from this collector's clock (limit %s); check NTP on both", e.Host, skew.Round(time.Second), MaxSkew)
+	}
+	// Decrypt before looking at the nonce: only a genuine envelope may take
+	// a place in the replay cache.
+	plain, err := Open(key, &e, limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", e.Host, err)
+	}
+	return &e, plain, nil
 }
 
 // count records one request from ip and reports whether it is within the

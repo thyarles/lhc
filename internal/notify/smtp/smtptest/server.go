@@ -38,11 +38,13 @@ type Server struct {
 	RejectData    bool   // answer 554 after DATA
 	RejectRcpt    bool   // answer 550 to RCPT
 	TempFailData  int    // answer 452 after the first N DATA
+	TempFailHello int    // greet the first N connections with 421
 
 	ln     net.Listener
 	tlsCfg *tls.Config
 	mu     sync.Mutex
 	msgs   []Message
+	verbs  []string
 	wg     sync.WaitGroup
 }
 
@@ -82,6 +84,13 @@ func (s *Server) Messages() []Message {
 	return append([]Message(nil), s.msgs...)
 }
 
+// Verbs lists every command received so far, in order, across connections.
+func (s *Server) Verbs() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.verbs...)
+}
+
 // Close stops the server.
 func (s *Server) Close() {
 	_ = s.ln.Close()
@@ -118,6 +127,16 @@ func (s *Server) handle(conn net.Conn) {
 		l, err := r.ReadString('\n')
 		return strings.TrimRight(l, "\r\n"), err == nil
 	}
+	s.mu.Lock()
+	busy := s.TempFailHello > 0
+	if busy {
+		s.TempFailHello--
+	}
+	s.mu.Unlock()
+	if busy {
+		say("421 4.3.2 Service not available, try again later")
+		return
+	}
 	say("220 smtptest ready")
 	var cur Message
 	for {
@@ -126,6 +145,9 @@ func (s *Server) handle(conn net.Conn) {
 			return
 		}
 		verb := strings.ToUpper(strings.Fields(line + " x")[0])
+		s.mu.Lock()
+		s.verbs = append(s.verbs, verb)
+		s.mu.Unlock()
 		switch verb {
 		case "EHLO", "HELO":
 			ext := []string{"250-smtptest"}

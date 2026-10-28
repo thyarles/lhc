@@ -18,7 +18,7 @@ func goldenDigest() *Digest {
 		Overall: check.Unhealthy,
 		Collectors: []DigestPeer{
 			{Host: "lhc-c1.example.com", Self: true, Last: digestNow.Add(-6 * time.Hour), Running: "1.2.3", Installed: "1.3.0"},
-			{Host: "lhc-c2.example.com", Last: digestNow.Add(-5 * time.Hour)},
+			{Host: "lhc-c2.example.com", Last: digestNow.Add(-5 * time.Hour), RelayErr: "connect relay.example.com:25: connection refused"},
 			{Host: "lhc-c3.example.com", Last: digestNow.Add(-50 * time.Hour), Silent: true},
 		},
 		Silent: []DigestHost{
@@ -36,6 +36,7 @@ func goldenDigest() *Digest {
 		Newest: "1.3.0", NewestHosts: 33,
 		Older:     []string{"db01.example.com (1.2.3)", "lhc-c3.example.com (1.2.3)", "web01.example.com (1.2.3)", "web02.example.com (dev)", "web03.example.com (unknown)"},
 		OlderMore: 2,
+		OnePerHub: true, Standby: []string{"lhc-c2.example.com", "lhc-c3.example.com"}, Slot: digestNow,
 	}
 }
 

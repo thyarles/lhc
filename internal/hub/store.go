@@ -33,9 +33,19 @@ type summary struct {
 	GeneratedAt time.Time    `json:"generated_at"`
 	Vitals      []check.Fact `json:"vitals"`
 	Sections    []struct {
+		Name   string        `json:"name"`
+		Rows   []check.Row   `json:"rows"`
 		Alerts []check.Alert `json:"alerts"`
 	} `json:"sections"`
 }
+
+// A collector's own report, with digest_mode one, has a section saying
+// whether it could reach the relay that night (see cli's relaySection).
+const (
+	RelaySection = "hub"
+	RelayRow     = "Digest Relay"
+	RelayAlert   = "Digest relay unreachable from this collector"
+)
 
 func (s Store) path(host string) (string, error) {
 	if !ValidHost(host) {
@@ -67,9 +77,13 @@ type Entry struct {
 	Generated  time.Time
 	Overall    string
 	Version    string // lhc on the host; "" in a report from before it was sent
-	Vitals     []check.Fact
-	Alerts     []check.Alert // worst first
-	Err        error         // the file could not be read
+	// A collector's relay check, from its own report: RelayChecked when
+	// the report has one, RelayErr when it failed.
+	RelayChecked bool
+	RelayErr     string
+	Vitals       []check.Fact
+	Alerts       []check.Alert // worst first
+	Err          error         // the file could not be read
 }
 
 // List reads every host's file, sorted by host name. A missing store
@@ -101,6 +115,17 @@ func (s Store) List() ([]Entry, error) {
 		e.ReceivedAt, e.Generated, e.Overall, e.Version, e.Vitals, e.Err = st.ReceivedAt, sum.GeneratedAt, sum.Overall, sum.Version, sum.Vitals, err
 		for _, sec := range sum.Sections {
 			e.Alerts = append(e.Alerts, sec.Alerts...)
+			if sec.Name != RelaySection {
+				continue
+			}
+			for _, r := range sec.Rows {
+				if r.Label == RelayRow {
+					e.RelayChecked = true
+					if r.Status.Flagged() {
+						e.RelayErr = r.Value
+					}
+				}
+			}
 		}
 		slices.SortStableFunc(e.Alerts, func(a, b check.Alert) int { return int(b.Status) - int(a.Status) })
 		out = append(out, e)

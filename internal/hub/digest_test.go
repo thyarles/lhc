@@ -280,3 +280,41 @@ func TestSemver(t *testing.T) {
 		t.Fatal("newer")
 	}
 }
+
+func TestTheDigestFlagsACollectorThatCannotReachTheRelay(t *testing.T) {
+	c2 := entry("c2.example.com", "caution", time.Hour, RelayAlert)
+	c2.RelayChecked, c2.RelayErr = true, "connect relay.example.com:25: connection refused"
+	old := entry("c3.example.com", "ok", time.Hour) // older lhc: no relay check
+	d, _ := digest([]Entry{entry("c1.example.com", "ok", time.Hour), c2, old}, DigestState{}, "c2.example.com", "c3.example.com")
+	p := d.Collectors[1]
+	if p.Status() != check.Caution || d.PeerText(p) != "last report 2026-01-05 06:00 (1h ago) · relay unreachable: connect relay.example.com:25: connection refused" {
+		t.Fatalf("%v %q", p.Status(), d.PeerText(p))
+	}
+	if q := d.Collectors[2]; q.Status() != check.OK || strings.Contains(d.PeerText(q), "relay") {
+		t.Fatalf("an older peer was marked: %q", d.PeerText(q))
+	}
+	if d.Overall != check.Caution {
+		t.Fatal(d.Overall)
+	}
+}
+
+func TestTheDigestSaysWhoSentItAndWhoStandsBy(t *testing.T) {
+	order := []string{"c1.example.com", "c2.example.com", "c3.example.com"}
+	slot := t0.Add(-time.Hour)
+	for rank, want := range []string{
+		"Sent by c1.example.com · standby c2.example.com, c3.example.com",
+		"Sent by c2.example.com: no digest from c1.example.com by " + slot.Format("15:04"),
+		"Sent by c3.example.com: no digest from c1.example.com, c2.example.com by " + slot.Format("15:04"),
+	} {
+		d, _ := BuildDigest([]Entry{entry("a.example.com", "ok", time.Hour)}, DigestState{}, DigestOptions{
+			Self: order[rank], SilentAfter: 26 * time.Hour, Version: "1.0.0", Now: t0,
+			OnePerHub: true, Order: order, Rank: rank, Slot: slot,
+		})
+		if got := d.SenderLine(); got != want {
+			t.Errorf("rank %d: %q, want %q", rank, got, want)
+		}
+	}
+	if d, _ := digest([]Entry{entry("a.example.com", "ok", time.Hour)}, DigestState{}); d.SenderLine() != "" {
+		t.Fatal(d.SenderLine())
+	}
+}

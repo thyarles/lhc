@@ -94,6 +94,9 @@ func TestValidation(t *testing.T) {
 		"collector:\n  listen: \"8461\"\n",
 		"collector:\n  max_report_size: 1KiB\n",
 		"collector:\n  max_report_size: lots\n",
+		"collector:\n  digest_mode: all\n",
+		"collector:\n  takeover_after: 2m\n",
+		"collector:\n  takeover_after: 3h\n",
 	} {
 		c, err := config.Parse([]byte(bad))
 		if err == nil {
