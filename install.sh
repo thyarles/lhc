@@ -2,11 +2,12 @@
 #
 # One-call installer for lhc (Linux Health Check).
 #
-#   # the newest release
-#   curl -fsSL https://raw.githubusercontent.com/thyarles/lhc/main/install.sh | bash
+#   # the newest release (wget takes over when curl is too old for GitHub)
+#   U=https://raw.githubusercontent.com/thyarles/lhc/main/install.sh
+#   (curl -fsSL $U || wget -qO- $U) | bash
 #
 #   # a specific release, with settings and a schedule
-#   curl -fsSL .../install.sh | bash -s -- v1.2.0 \
+#   (curl -fsSL $U || wget -qO- $U) | bash -s -- v1.2.0 \
 #       --set email.daily_recipients=ops@example.com --set smtp.host=relay.example.com \
 #       --time 06:30 --every 6h
 #
