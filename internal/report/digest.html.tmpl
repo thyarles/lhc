@@ -84,6 +84,9 @@
 {{- with .Totals}}
 <div class="hc-muted" style="font-size:12px;color:{{T.Muted}};margin-top:3px;background:{{T.Surface}}">{{.}}</div>
 {{- end}}
+{{- with .VersionsLine}}
+<div class="hc-muted" style="font-size:12px;color:{{T.Muted}};margin-top:3px;background:{{T.Surface}}">{{.}}</div>
+{{- end}}
 </div>
 
 <div class="hc-band hc-muted" style="padding:10px 22px;font-size:10px;color:{{T.Muted}};background:{{T.Surface2}};border-top:1px solid {{T.Rule}};text-align:center">

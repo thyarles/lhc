@@ -349,6 +349,13 @@ say so in the subject (`· peer lhc-c2.example.com SILENT`). A relay that
 refuses the digest is retried every 30 minutes until the next day's.
 `lhc hub digest --dry-run` prints the digest as it stands.
 
+After an upgrade, the digest shows who was left behind. When the hosts do
+not all run the same lhc, "everyone else" ends with a line such as
+`lhc 0.10.0 on 45 hosts · older: db01.example.com (0.9.1)`, naming up to
+five hosts. A collector whose running `lhc collect` is older than the
+installed binary says `running lhc X, installed Y: restart lhc-collect` at
+CAUTION. `lhc hub status` has a `VERSION` column for every host.
+
 ## Files
 
 | | root | user |

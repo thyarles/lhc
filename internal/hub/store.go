@@ -29,6 +29,7 @@ type summary struct {
 	Schema      int          `json:"schema"`
 	Host        string       `json:"host"`
 	Overall     string       `json:"overall"`
+	Version     string       `json:"version"`
 	GeneratedAt time.Time    `json:"generated_at"`
 	Vitals      []check.Fact `json:"vitals"`
 	Sections    []struct {
@@ -65,6 +66,7 @@ type Entry struct {
 	ReceivedAt time.Time
 	Generated  time.Time
 	Overall    string
+	Version    string // lhc on the host; "" in a report from before it was sent
 	Vitals     []check.Fact
 	Alerts     []check.Alert // worst first
 	Err        error         // the file could not be read
@@ -96,7 +98,7 @@ func (s Store) List() ([]Entry, error) {
 		if err == nil {
 			err = json.Unmarshal(st.Report, &sum)
 		}
-		e.ReceivedAt, e.Generated, e.Overall, e.Vitals, e.Err = st.ReceivedAt, sum.GeneratedAt, sum.Overall, sum.Vitals, err
+		e.ReceivedAt, e.Generated, e.Overall, e.Version, e.Vitals, e.Err = st.ReceivedAt, sum.GeneratedAt, sum.Overall, sum.Version, sum.Vitals, err
 		for _, sec := range sum.Sections {
 			e.Alerts = append(e.Alerts, sec.Alerts...)
 		}
