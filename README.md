@@ -64,11 +64,16 @@ As root, on Debian/Ubuntu, RHEL/Rocky/Alma/CentOS (7 and later) or SUSE/openSUSE
 Leap, amd64 or arm64:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/thyarles/lhc/main/install.sh | bash -s -- \
+U=https://raw.githubusercontent.com/thyarles/lhc/main/install.sh
+(curl -fsSL $U || wget -qO- $U) | bash -s -- \
     --set smtp.host=relay.example.com \
     --set email.daily_recipients=ops@example.com \
     --set email.alert_recipients=team@example.com
 ```
+
+The `curl || wget` form matters on old hosts: a curl too old for GitHub's
+TLS fails at once, and wget takes over. `install.sh` does the same for its
+own downloads.
 
 The installer downloads the release archive, verifies its SHA-256, installs
 `/usr/local/bin/lhc`, writes `/etc/lhc/config.yaml` and schedules the run:
@@ -83,6 +88,57 @@ package repositories are slow or unreachable. `--help` lists the options (`--tim
 Without root, or to try it first: download `lhc_linux_amd64.tar.gz` from the
 [releases](https://github.com/thyarles/lhc/releases), unpack it and run
 `./lhc report`. Nothing is installed or changed.
+
+### If the download fails
+
+- **`curl: (35) Peer reports incompatible or unsupported protocol version`**:
+  the host's curl is too old for GitHub's TLS. The command above falls back
+  to wget by itself.
+- **A certificate error from curl or wget** (`certificate verify failed`,
+  `unable to locally verify the issuer's authority`): the host's CA bundle is
+  out of date. Update it (`yum update ca-certificates`, or the distribution's
+  equivalent), or add a current bundle under
+  `/etc/pki/ca-trust/source/anchors/` and run `update-ca-trust extract`.
+  **Do not** turn the check off (`curl -k`, `wget --no-check-certificate`):
+  `install.sh` fetches the binary and its checksums the same way, so the
+  SHA-256 check would then prove nothing, for a binary that runs as root.
+- **No internet on the host at all**: on a host that has it, download the
+  archive and `checksums.txt` from the release, check the archive, copy it
+  over, and install from there:
+
+  ```sh
+  # on a host with internet access
+  V=v0.9.1   # the release you want
+  B=https://github.com/thyarles/lhc/releases/download/$V
+  curl -fsSLO $B/lhc_linux_amd64.tar.gz && curl -fsSLO $B/checksums.txt
+  grep ' lhc_linux_amd64.tar.gz$' checksums.txt | sha256sum -c -
+  scp lhc_linux_amd64.tar.gz root@db01.example.com:/tmp/
+
+  # on the host
+  tar -xzf /tmp/lhc_linux_amd64.tar.gz -C /tmp lhc
+  install -m 0755 /tmp/lhc /usr/local/bin/lhc
+  lhc config set smtp.host=relay.example.com email.daily_recipients=ops@example.com
+  lhc install
+  ```
+
+  With many such hosts, an internal mirror of the archive and
+  `checksums.txt` works too: `BASE_URL=https://mirror.example.com/lhc` makes
+  `install.sh` download from there.
+
+### Upgrading many hosts
+
+Re-run the same command on each host: the config, state and reports are
+kept, so the `--set` options are not needed again, and a hub collector
+restarts `lhc-collect` on the new binary by itself. From a host that reaches
+the others as root over ssh:
+
+```sh
+U=https://raw.githubusercontent.com/thyarles/lhc/main/install.sh
+for h in web01.example.com web02.example.com db01.example.com; do
+    echo "== $h"
+    ssh root@$h "(curl -fsSL $U || wget -qO- $U) | bash 2>&1 | grep -E 'Installed|collector service|ERROR'"
+done
+```
 
 ## Use
 
@@ -235,11 +291,13 @@ latest report of every host in `/var/lib/lhc/hub/`.
 # once, anywhere: the hub's shared key
 lhc hub keygen --out ./hub.key
 
+U=https://raw.githubusercontent.com/thyarles/lhc/main/install.sh
+
 # on each of the two collectors (systemd as root, any version: RHEL 7 too)
-curl -fsSL .../install.sh | bash -s -- --hub-key-file ./hub.key --collector
+(curl -fsSL $U || wget -qO- $U) | bash -s -- --hub-key-file ./hub.key --collector
 
 # on every host, collectors included
-curl -fsSL .../install.sh | bash -s -- --hub-key-file ./hub.key \
+(curl -fsSL $U || wget -qO- $U) | bash -s -- --hub-key-file ./hub.key \
     --set hub.collectors=http://192.0.2.10:8461,http://192.0.2.11:8461
 ```
 
