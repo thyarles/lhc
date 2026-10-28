@@ -115,10 +115,26 @@ preview cannot hide tomorrow's "new port" or "new SUID file".
 ## Configuration
 
 `/etc/lhc/config.yaml` (root) or `~/.config/lhc/config.yaml`. `lhc config init`
-writes a fully commented example: every setting with its default and what it
-is for. The file only needs what differs from the defaults, and a setting
-added in a later release arrives with its default. Unknown keys are errors,
-so a typo cannot silently do nothing.
+(and the first `lhc config set` or install) writes the example with every
+setting commented out: `#port: 25`, its default, under what it is for. The
+file holds only what you change. `lhc config set key=value` uncomments that
+one line, and every other setting follows the default of the installed
+version, so a new or changed default arrives with the upgrade. Unknown keys
+are errors, so a typo cannot silently do nothing.
+
+Files written by older releases held every default of the day they were created,
+which pinned old defaults after an upgrade. `lhc install`, and therefore
+every upgrade with install.sh, comments out each setting that only repeats a
+default, today's or an earlier release's, and says which old defaults it
+let go:
+
+```
+  ✓ checks.processes.zombie_caution: 10 was the old default, now follows the default (2500)
+```
+
+A value that was never a default is your choice and stays. The previous file
+is kept as `config.yaml.bak`, and `lhc config show --diff` then lists only
+your real changes.
 
 The settings that matter on day one:
 

@@ -37,15 +37,48 @@ func ParseAssignment(s string) (Assignment, error) {
 
 // Set applies assignments to the YAML in src and returns the new document.
 //
-// It edits the YAML node tree rather than re-rendering the struct, so the
-// operator's comments and ordering survive. Every key is checked against the
-// schema first: a typo stops the edit instead of becoming a line that does
-// nothing. The result is parsed and validated before it is returned.
+// Each setting is edited as a line of text: a commented-out setting and the
+// sections above it become active, and the rest of the file, comments
+// included, stays as it was. Every key is checked against the schema first:
+// a typo stops the edit instead of becoming a line that does nothing. The
+// result is parsed and validated before it is returned.
 func Set(src []byte, assigns []Assignment) ([]byte, error) {
 	schema, err := schemaTree()
 	if err != nil {
 		return nil, err
 	}
+	cur := src
+	for _, a := range assigns {
+		want := lookup(schema, a.Path)
+		if want == nil {
+			return nil, fmt.Errorf("%s: no such setting", strings.Join(a.Path, "."))
+		}
+		if want.Kind == yaml.MappingNode {
+			return nil, fmt.Errorf("%s is a section; set one of its keys, e.g. %s.%s",
+				strings.Join(a.Path, "."), strings.Join(a.Path, "."), want.Content[0].Value)
+		}
+		val := valueNode(want, a.Value)
+		if out, ok := setLine(cur, a.Path, val); ok {
+			cur = out
+			continue
+		}
+		if cur, err = setNode(cur, a.Path, val); err != nil {
+			return nil, err
+		}
+	}
+	c, err := Parse(cur)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.Validate(); err != nil {
+		return nil, err
+	}
+	return cur, nil
+}
+
+// setNode edits the YAML node tree, for the shapes setLine leaves alone
+// (flow-style sections). The encoder re-renders the whole file.
+func setNode(src []byte, path []string, val *yaml.Node) ([]byte, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(src, &doc); err != nil {
 		return nil, err
@@ -57,41 +90,24 @@ func Set(src []byte, assigns []Assignment) ([]byte, error) {
 	if root.Kind != yaml.MappingNode {
 		return nil, errors.New("config file is not a YAML mapping")
 	}
-	for _, a := range assigns {
-		want := lookup(schema, a.Path)
-		if want == nil {
-			return nil, fmt.Errorf("%s: no such setting", strings.Join(a.Path, "."))
-		}
-		if want.Kind == yaml.MappingNode {
-			return nil, fmt.Errorf("%s is a section; set one of its keys, e.g. %s.%s",
-				strings.Join(a.Path, "."), strings.Join(a.Path, "."), want.Content[0].Value)
-		}
-		setPath(root, a.Path, valueNode(want, a.Value))
-	}
+	setPath(root, path, val)
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
 	if err := enc.Encode(&doc); err != nil {
 		return nil, err
 	}
-	c, err := Parse(buf.Bytes())
-	if err != nil {
-		return nil, err
-	}
-	if err := c.Validate(); err != nil {
-		return nil, err
-	}
 	return buf.Bytes(), nil
 }
 
 // SetFile applies assignments to the file at path, creating it from the
-// commented example when it does not exist. The previous version is kept as
-// path.bak.
+// example with every setting commented out when it does not exist. The
+// previous version is kept as path.bak.
 func SetFile(path string, assigns []Assignment) error {
 	src, err := os.ReadFile(path)
 	existed := err == nil
 	if errors.Is(err, os.ErrNotExist) {
-		src, err = Example, nil
+		src, err = CommentedExample(), nil
 	}
 	if err != nil {
 		return err
@@ -109,6 +125,26 @@ func SetFile(path string, assigns []Assignment) error {
 		}
 	}
 	return state.WriteFileAtomic(path, out, 0o600)
+}
+
+// UnpinFile runs Unpin on the file at path, keeping the previous version as
+// path.bak. A missing file, or one with nothing to unpin, is left alone.
+func UnpinFile(path string) ([]Unpinned, error) {
+	src, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out, done, err := Unpin(src)
+	if err != nil || bytes.Equal(out, src) {
+		return nil, err
+	}
+	if err := os.WriteFile(path+".bak", src, 0o600); err != nil {
+		return nil, err
+	}
+	return done, state.WriteFileAtomic(path, out, 0o600)
 }
 
 // schemaTree is the default config as a node tree: it says which keys exist

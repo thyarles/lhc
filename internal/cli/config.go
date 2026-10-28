@@ -25,7 +25,7 @@ func newConfigInitCmd(a *app) *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Write the commented example config",
+		Short: "Write the example config, every setting commented out",
 		Args:  cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
 			path := a.configPath()
@@ -36,7 +36,7 @@ func newConfigInitCmd(a *app) *cobra.Command {
 				return err
 			}
 			// 0600: the file will hold the SMTP password.
-			if err := state.WriteFileAtomic(path, config.Example, 0o600); err != nil {
+			if err := state.WriteFileAtomic(path, config.CommentedExample(), 0o600); err != nil {
 				return err
 			}
 			a.printf("  ✓ Created %s", path)

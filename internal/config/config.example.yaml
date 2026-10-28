@@ -1,12 +1,14 @@
 # lhc configuration.
 #
-# Every key shows its default. The file only needs what this host wants
-# different: delete anything you have not changed, and a setting added in a
-# future release arrives with its default without anyone editing this file.
+# Every key shows its default. In the file lhc writes, every setting is
+# commented out: only lines without the "#" are this host's choices, and
+# everything else follows the defaults of the installed version, so a new
+# default arrives with the upgrade. `lhc install` comments out settings that
+# only repeat a default, including an older release's.
 #
-# Change values with `lhc config set key=value` (it validates and keeps your
-# comments), check them with `lhc config validate`, and see the effective
-# settings with `lhc config show --diff`.
+# Change values with `lhc config set key=value` (it uncomments the line,
+# validates and keeps your comments), check them with `lhc config validate`,
+# and see what this host changes with `lhc config show --diff`.
 
 # The name this host uses in reports, subject lines and saved report files.
 # Blank = the kernel hostname. The resolved DNS name is deliberately NOT used:
