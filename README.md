@@ -159,6 +159,41 @@ the CPU spike it caused itself. Each scheduled run waits a random slice of
 the window first (systemd's `RandomizedDelaySec`, or the same thing in
 process under cron). A run you start by hand is never delayed.
 
+### Site-specific log patterns
+
+The `logs` check counts today's matches of its built-in patterns (OOM
+kills, I/O and filesystem errors, kernel panics, segfaults, machine checks,
+SSH probing, USB devices, sudo). `checks.logs.extra_patterns` adds your own,
+checked after those:
+
+```yaml
+checks:
+  logs:
+    extra_patterns:
+      - label: NFS Timeouts
+        pattern: "nfs: server .* not responding"
+        source: system
+        severity: caution
+        min_count: 3
+```
+
+- `label`: the row and alert name. It must be unique and must not reuse a
+  built-in label. It is part of the alert's identity, so renaming it makes
+  an open condition look new once.
+- `pattern`: an extended regex (`grep -E`), matched case-insensitively.
+- `source`: `system` (the journal, or syslog/messages/kern.log) or `auth`
+  (auth.log/secure). Default `system`.
+- `severity` (required): `info`, `caution` or `unhealthy`. The row and an
+  alert take it once `min_count` matches are seen today; fewer matches show
+  as INFO.
+- `min_count`: 0 counts only and never escalates. At most 200, because the
+  scan keeps the last 200 matches.
+
+Only today's lines count, like the built-in patterns, so a match from last
+week does not keep the report yellow. Edit the file by hand for this one
+(`lhc config set` cannot write a list of patterns), then run
+`lhc config validate`.
+
 ## How alerting works
 
 Each finding has a fingerprint: its message with the numbers removed, so
