@@ -416,7 +416,7 @@ func TestHTMLMarksANewFindingAsNeedingAttention(t *testing.T) {
 
 func TestHTMLMarksAnUnchangedFindingAsNoAction(t *testing.T) {
 	out := html(t, model("h", &Triage{Ongoing: []string{diskMsg}}, diskSections()...))
-	if !strings.Contains(out, "Routine confirmation") || !strings.Contains(out, "no action implied") {
+	if !strings.Contains(out, "Routine confirmation") || !strings.Contains(out, "Already reported, unchanged") {
 		t.Fatal("routine block missing")
 	}
 }
@@ -461,7 +461,7 @@ func TestTextReportLeadsWithTheTriageSummary(t *testing.T) {
 
 func TestTextReportMarksARoutineRun(t *testing.T) {
 	out := Text(model("h", &Triage{Ongoing: []string{diskMsg}}, diskSections()...))
-	if !strings.Contains(out, "ROUTINE CONFIRMATION") || !strings.Contains(out, "no action implied") {
+	if !strings.Contains(out, "ROUTINE CONFIRMATION") || !strings.Contains(out, "Already reported, unchanged") {
 		t.Fatal(out)
 	}
 }
@@ -475,6 +475,10 @@ func TestRoutineHeadlineNeverDeniesNewFindings(t *testing.T) {
 		text, html string
 	}{
 		{"alert", &Triage{NotifyAll: true, New: []string{diskMsg}}, "NEW FINDINGS — PLEASE READ", "new findings — please read"},
+		{"alert, worse", &Triage{NotifyAll: true, Escalated: []string{diskMsg}, Reminders: []string{diskMsg}}, "NEW FINDINGS — PLEASE READ", "new findings — please read"},
+		// A reminder is no news: "new findings" above an empty "new" list
+		// sent readers looking for something that was not there.
+		{"reminder only", &Triage{NotifyAll: true, Reminders: []string{diskMsg}}, "STILL OPEN — REMINDER", "Reminder: findings still open — please read"},
 		{"new below the alert level", &Triage{New: []string{diskMsg}}, "ROUTINE CONFIRMATION — nothing urgent", "ran — nothing urgent"},
 		{"worse below the alert level", &Triage{Escalated: []string{diskMsg}}, "ROUTINE CONFIRMATION — nothing urgent", "ran — nothing urgent"},
 		{"only known conditions", &Triage{Ongoing: []string{diskMsg}}, "ROUTINE CONFIRMATION — no new findings", "ran — no new findings"},
@@ -487,6 +491,16 @@ func TestRoutineHeadlineNeverDeniesNewFindings(t *testing.T) {
 		if out := html(t, m); !strings.Contains(out, c.html) {
 			t.Errorf("%s: html has no %q", c.name, c.html)
 		}
+	}
+}
+
+func TestAReminderIsNotCalledNews(t *testing.T) {
+	m := model("h", &Triage{NotifyAll: true, Reminders: []string{diskMsg}}, diskSections()...)
+	if out := Text(m); strings.Contains(out, "NEW FINDINGS") {
+		t.Fatalf("text:\n%s", out)
+	}
+	if out := html(t, m); strings.Contains(out, "new findings") {
+		t.Fatalf("html:\n%s", out)
 	}
 }
 

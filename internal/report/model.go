@@ -173,7 +173,7 @@ func (t *Triage) groups() []triageGroup {
 		{newLabel, t.New, urgency},
 		{worseLabel, t.Escalated, urgency},
 		{"Still open — reminder", t.Reminders, check.Caution},
-		{"Known, unchanged — no action implied", t.Ongoing, check.Info},
+		{"Already reported, unchanged", t.Ongoing, check.Info},
 		{"Cleared since last run", t.Resolved, check.OK},
 	}
 	var out []triageGroup

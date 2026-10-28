@@ -248,7 +248,9 @@ func Evaluate(alerts []check.Alert, store state.Store, p Policy, now time.Time) 
 		if n := len(d.Escalated); n > 0 {
 			parts = append(parts, fmt.Sprintf("%d worsened", n))
 		}
-		d.Reason = fmt.Sprintf("%s below alerts.notify_all_on (%s), daily list only",
+		// No destination here: whether this goes to the daily list or only
+		// to a hub collector is decided at delivery (cli.mailDue).
+		d.Reason = fmt.Sprintf("%s below alerts.notify_all_on (%s)",
 			strings.Join(parts, "; "), strings.ToLower(p.NotifyAllOn.Word()))
 	case len(d.Ongoing) > 0:
 		d.Reason = fmt.Sprintf("%d known condition(s) unchanged since the last notification — report only, no alert sent", len(d.Ongoing))

@@ -247,6 +247,11 @@ func TestAHeartbeatTheHubHoldsIsNotMailed(t *testing.T) {
 	if !strings.Contains(h.stderr, "Heartbeat skipped — delivered to collector "+col.url) {
 		t.Fatalf("stderr:\n%s", h.stderr)
 	}
+	// Nothing was mailed: no "daily list only", no subject of a mail that
+	// does not exist.
+	if !strings.Contains(h.stderr, ", left to the hub digest") || strings.Contains(h.stderr, "daily list only") || strings.Contains(h.stderr, "Subject:") {
+		t.Fatalf("stderr:\n%s", h.stderr)
+	}
 	if rep := col.stored(t, "a.example.com"); rep == nil {
 		t.Fatal("the collector has no report")
 	}
@@ -261,7 +266,7 @@ func TestWithEveryCollectorDownTheHeartbeatIsMailed(t *testing.T) {
 	if len(msgs) != 2 || len(msgs[1].To) != 1 || msgs[1].To[0] != "ops@example.com" {
 		t.Fatalf("want the heartbeat to the daily list, got %d message(s)\n%s", len(msgs), h.stderr)
 	}
-	if strings.Contains(h.stderr, "Heartbeat skipped") {
+	if strings.Contains(h.stderr, "Heartbeat skipped") || !strings.Contains(h.stderr, ", daily list only") || !strings.Contains(h.stderr, "Subject:") {
 		t.Fatalf("stderr:\n%s", h.stderr)
 	}
 }
@@ -288,7 +293,8 @@ func TestHeartbeatNeverMailsOnlyAlerts(t *testing.T) {
 	if n := len(h.relay.Messages()); n != 1 {
 		t.Fatalf("want only the alert, got %d message(s)\n%s", n, h.stderr)
 	}
-	if !strings.Contains(h.stderr, "Heartbeat skipped — email.heartbeat is never") {
+	if !strings.Contains(h.stderr, "Heartbeat skipped — email.heartbeat is never") ||
+		!strings.Contains(h.stderr, ", not mailed (email.heartbeat is never)") || strings.Contains(h.stderr, "Subject:") {
 		t.Fatalf("stderr:\n%s", h.stderr)
 	}
 	if h.alertsState() == nil {
