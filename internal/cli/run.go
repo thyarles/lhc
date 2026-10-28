@@ -219,26 +219,40 @@ func mailDue(alert bool, mode string, collectors, accepted int) bool {
 	}
 }
 
+// destination is where a run below the broad alert goes. It used to say
+// "daily list only" when nothing was mailed at all.
+func destination(due bool, heartbeat string, recipients int) string {
+	switch {
+	case !due && heartbeat == "never":
+		return "not mailed (email.heartbeat is never)"
+	case !due:
+		return "left to the hub digest"
+	case recipients == 0:
+		return "not mailed (no recipients)"
+	default:
+		return "daily list only"
+	}
+}
+
 // mail sends the run's message and, once the relay accepted it, commits the
 // alert history and the baselines. outs is where the hub delivery went.
 func (a *app) mail(ctx context.Context, say func(string, ...any), h check.Host, overall check.Status,
 	decision *alerts.Decision, states *state.Dir, text, html string, now time.Time, outs []hub.Outcome,
 ) error {
 	to, isAlert := notify.PlanDelivery(decision, a.cfg.Email.DailyRecipients, a.cfg.Email.AlertRecipients)
-	subject := notify.Subject(overall, decision, h.Label, isAlert, now)
-	say("  Subject: %s", subject)
+	// NotifyAll, not isAlert: with no alert list the alert goes to the
+	// daily list, and it is still an alert.
+	due := mailDue(decision.NotifyAll, a.cfg.Email.Heartbeat, len(outs), hub.Accepted(outs))
 	switch {
 	case isAlert:
 		say("  Alerting the broad list — %s", decision.Reason)
 	case decision.NotifyAll && len(a.cfg.Email.AlertRecipients) == 0:
 		say("  ! Findings need attention but no alert_recipients are configured — heartbeat only")
 	default:
-		say("  No broad alert — %s", decision.Reason)
+		say("  No broad alert — %s, %s", decision.Reason, destination(due, a.cfg.Email.Heartbeat, len(to)))
 	}
 
-	// NotifyAll, not isAlert: with no alert list the alert goes to the
-	// daily list, and it is still an alert.
-	if !mailDue(decision.NotifyAll, a.cfg.Email.Heartbeat, len(outs), hub.Accepted(outs)) {
+	if !due {
 		if a.cfg.Email.Heartbeat == "never" {
 			say("  Heartbeat skipped — email.heartbeat is never")
 		} else {
@@ -254,6 +268,8 @@ func (a *app) mail(ctx context.Context, say func(string, ...any), h check.Host, 
 		// Nothing was lost: there was nobody to tell. Commit normally.
 		return commit(decision, states)
 	}
+	subject := notify.Subject(overall, decision, h.Label, isAlert, now)
+	say("  Subject: %s", subject)
 	sender := a.sender(h)
 	sender.Retry = mailRetry
 	sender.OnRetry = func(err error, wait time.Duration) {

@@ -220,7 +220,7 @@ func TestThresholdUnhealthySuppressesCautionAlerts(t *testing.T) {
 // requiring attention" right next to the condition.
 func TestANewConditionBelowTheThresholdSaysSo(t *testing.T) {
 	d := run(t, state.NewMemory(), DefaultPolicy, []check.Alert{disk}, at(1, 0))
-	if want := "1 new condition(s) below alerts.notify_all_on (unhealthy), daily list only"; d.Reason != want {
+	if want := "1 new condition(s) below alerts.notify_all_on (unhealthy)"; d.Reason != want {
 		t.Fatalf("reason %q, want %q", d.Reason, want)
 	}
 }

@@ -83,6 +83,8 @@ func triageText(t *Triage) []string {
 	}
 	head := "ROUTINE CONFIRMATION — no new findings"
 	switch {
+	case t.NotifyAll && !t.HasNews():
+		head = "STILL OPEN — REMINDER"
 	case t.NotifyAll:
 		head = "NEW FINDINGS — PLEASE READ"
 	case t.HasNews():
