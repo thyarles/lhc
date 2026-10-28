@@ -126,12 +126,17 @@ func TestMissingAuthLogOnAJournaldHostIsInformational(t *testing.T) {
 	}
 }
 
-func TestMissingAuthLogWithoutJournalIsCaution(t *testing.T) {
+// A minimal host or container logs no authentication at all. That is a
+// missing subsystem, not a fault: it must not keep the report yellow.
+func TestMissingAuthLogWithoutJournalIsInformational(t *testing.T) {
 	e := checktest.NewEnv(t, Check{}, nil)
 	s := e.Run(Check{})
 	row := checktest.Rows(s)["Auth Log"]
-	if row.Value != "Not found (/var/log/auth.log or /var/log/secure)" || row.Status != check.Caution {
+	if row.Value != "Not found (/var/log/auth.log or /var/log/secure)" || row.Status != check.Info {
 		t.Fatalf("Auth Log row: %+v", row)
+	}
+	if s.Status.Flagged() {
+		t.Fatalf("section status %v", s.Status)
 	}
 	checktest.NoAlerts(t, s)
 }
