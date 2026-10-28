@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"regexp"
@@ -105,7 +106,7 @@ type Paths struct {
 
 // Hub is where this host sends its report after every run.
 type Hub struct {
-	// Base URLs of the collectors, e.g. http://192.0.2.10:8461. Empty = off.
+	// Base URLs of the collectors, e.g. http://collector.example.com:8461. Empty = off.
 	Collectors []string `yaml:"collectors"`
 	// The shared hub key: base64, 32 bytes, mode 0600.
 	KeyFile string `yaml:"key_file"`
@@ -372,9 +373,32 @@ func (c *Config) Validate() error {
 func collectorURL(v string) error {
 	u, err := url.Parse(v)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || strings.Trim(u.Path, "/") != "" || u.RawQuery != "" || u.User != nil {
-		return fmt.Errorf("%q is not a collector address such as http://192.0.2.10:8461", v)
+		return fmt.Errorf("%q is not a collector address such as http://collector.example.com:8461", v)
+	}
+	if ip, err := netip.ParseAddr(u.Hostname()); err == nil && documentation(ip) {
+		return fmt.Errorf("%q is an example address from the documentation (RFC 5737/3849): use your collector's real address", v)
 	}
 	return nil
+}
+
+// The documentation ranges (RFC 5737, RFC 3849). The README and the example
+// config show collectors there, and on a first rollout they were copied
+// literally: every run then failed to reach collectors that do not exist.
+var docRanges = []netip.Prefix{
+	netip.MustParsePrefix("192.0.2.0/24"),
+	netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"),
+	netip.MustParsePrefix("2001:db8::/32"),
+}
+
+func documentation(ip netip.Addr) bool {
+	ip = ip.Unmap()
+	for _, p := range docRanges {
+		if p.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // Marshal renders the effective config, checks included, as YAML.
