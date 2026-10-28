@@ -87,10 +87,10 @@ func TestValidation(t *testing.T) {
 		"schedule:\n  every: 90m\n",
 		"schedule:\n  random_window: soon\n",
 		"checks:\n  cpu:\n    caution: 99\n",
-		"hub:\n  collectors: [192.0.2.10:8461]\n",
-		"hub:\n  collectors: [\"ftp://192.0.2.10:8461\"]\n",
-		"hub:\n  collectors: [\"http://192.0.2.10:8461/v1/report\"]\n",
-		"hub:\n  collectors: [\"http://192.0.2.10:8461\"]\n  key_file: \"\"\n",
+		"hub:\n  collectors: [collector.example.com:8461]\n",
+		"hub:\n  collectors: [\"ftp://collector.example.com:8461\"]\n",
+		"hub:\n  collectors: [\"http://collector.example.com:8461/v1/report\"]\n",
+		"hub:\n  collectors: [\"http://collector.example.com:8461\"]\n  key_file: \"\"\n",
 		"collector:\n  listen: \"8461\"\n",
 		"collector:\n  max_report_size: 1KiB\n",
 		"collector:\n  max_report_size: lots\n",
@@ -110,7 +110,7 @@ func TestTheHubIsOffByDefault(t *testing.T) {
 	if len(c.Hub.Collectors) != 0 || c.Collector.Enabled || c.Collector.Listen != ":8461" || c.Collector.MaxReportSize != 1<<20 {
 		t.Fatalf("%+v %+v", c.Hub, c.Collector)
 	}
-	c, err := config.Parse([]byte("hub:\n  collectors: [\"http://192.0.2.10:8461\", \"https://collector.example.com:8461/\"]\ncollector:\n  max_report_size: 2MiB\n"))
+	c, err := config.Parse([]byte("hub:\n  collectors: [\"http://10.0.0.5:8461\", \"https://collector.example.com:8461/\"]\ncollector:\n  max_report_size: 2MiB\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,6 +119,41 @@ func TestTheHubIsOffByDefault(t *testing.T) {
 	}
 	if c.Collector.MaxReportSize != 2<<20 || c.Collector.MaxReportSize.String() != "2MiB" {
 		t.Fatal(c.Collector.MaxReportSize)
+	}
+}
+
+// The README shows collectors at documentation addresses. Copied literally,
+// they made every run fail to reach collectors that do not exist.
+func TestTheDocumentationAddressesAreNotCollectors(t *testing.T) {
+	for _, bad := range []string{
+		"http://192.0.2.10:8461",
+		"http://198.51.100.7:8461",
+		"https://203.0.113.200:8461/",
+		"http://[2001:db8::1]:8461",
+		"http://[::ffff:192.0.2.10]:8461",
+	} {
+		c, err := config.Parse([]byte("hub:\n  collectors: [\"" + bad + "\"]\n"))
+		if err == nil {
+			err = c.Validate()
+		}
+		if err == nil || !strings.Contains(err.Error(), "example address from the documentation") {
+			t.Errorf("%s: %v", bad, err)
+		}
+	}
+	for _, good := range []string{
+		"http://collector.example.com:8461",
+		"http://10.0.0.5:8461",
+		"http://192.0.3.10:8461",
+		"http://[2001:db9::1]:8461",
+		"http://lhc-c1:8461",
+	} {
+		c, err := config.Parse([]byte("hub:\n  collectors: [\"" + good + "\"]\n"))
+		if err == nil {
+			err = c.Validate()
+		}
+		if err != nil {
+			t.Errorf("%s: %v", good, err)
+		}
 	}
 }
 

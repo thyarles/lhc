@@ -192,6 +192,10 @@ curl -fsSL .../install.sh | bash -s -- --hub-key-file ./hub.key \
     --set hub.collectors=http://192.0.2.10:8461,http://192.0.2.11:8461
 ```
 
+The `192.0.2.x` addresses are placeholders from the documentation range: put
+your collectors' real addresses there. lhc refuses the documentation ranges
+(RFC 5737 and RFC 3849) in `hub.collectors`, so a copied example fails at once.
+
 - **Two collectors** are the expected setup. Each host sends to every one,
   and each collector is independent, so losing one loses nothing.
 - **Separate networks.** Where VLANs must not talk to each other, give each
