@@ -41,6 +41,8 @@ included) rewrites and restarts that service, with or without --collector.`,
 					return err
 				}
 				a.printf("  ✓ Created %s from the example", path)
+			} else if err := a.unpin(path); err != nil {
+				return err
 			}
 			if err := a.load(); err != nil {
 				return err
@@ -158,4 +160,26 @@ func newUninstallCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// unpin comments out the settings of an existing file that only hold a
+// shipped default, so this upgrade's defaults reach the host (#46). Files
+// written by older installs held every default of their day.
+func (a *app) unpin(path string) error {
+	done, err := config.UnpinFile(path)
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	same := 0
+	for _, u := range done {
+		if u.Past {
+			a.printf("  ✓ %s: %s was the old default, now follows the default (%s)", u.Key, u.Value, u.Default)
+		} else {
+			same++
+		}
+	}
+	if same > 0 {
+		a.printf("  ✓ %s: %d setting(s) at their default now follow it (commented out; backup in %s.bak)", path, same, path)
+	}
+	return nil
 }
