@@ -91,6 +91,7 @@
 
 <div class="hc-band hc-muted" style="padding:10px 22px;font-size:10px;color:{{T.Muted}};background:{{T.Surface2}};border-top:1px solid {{T.Rule}};text-align:center">
 {{- with .SenderLine}}{{.}}<br>{{end}}
+{{- with .LookupLine}}{{.}}<br>{{end}}
 A host that was shut down for good stays SILENT here until you run <code>lhc hub forget HOST</code> on each collector.
 </div>
 

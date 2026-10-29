@@ -7,14 +7,15 @@ import (
 	"strings"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/kube"
 )
 
 // custom-columns, never the table: kubectl 1.31 inserted
 // VOLUMEATTRIBUTESCLASS before AGE, and the ACCESS MODES header has a space.
 const pvcColumns = "custom-columns=NS:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase,SC:.spec.storageClassName"
 
-func pvcRows(ctx context.Context, s *check.Section, env *check.Env, k kube) {
-	res := k.run(ctx, "get", "pvc", "--all-namespaces", "--no-headers", "-o", pvcColumns)
+func pvcRows(ctx context.Context, s *check.Section, env *check.Env, k kube.Cluster) {
+	res := k.Get(ctx, "pvc", "--all-namespaces", "--no-headers", "-o", pvcColumns)
 	out := combined(res)
 	if !res.OK() || out == "" || strings.Contains(strings.ToLower(out), "no resources found") {
 		return

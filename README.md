@@ -388,6 +388,48 @@ five hosts. A collector whose running `lhc collect` is older than the
 installed binary says `running lhc X, installed Y: restart lhc-collect` at
 CAUTION. `lhc hub status` has a `VERSION` column for every host.
 
+### OOM kills in the digest
+
+The `logs` check counts OOM **kills**, not log lines (one kill writes about
+four), and says what was hit:
+
+- **container limit**: a container reached its own memory limit. That is a
+  workload sizing problem, at CAUTION.
+- **host**: the whole node ran out of memory, at UNHEALTHY.
+
+The host's report lists each killed process. When the process ran in a
+Kubernetes pod, the report names the pod (`namespace/name`, looked up
+locally with `crictl`), or gives its UID when `crictl` cannot say. The alert
+text stays `OOM Killer: N kill(s) today` whichever pod was hit, so a new pod
+name after every deploy does not read as a new alert.
+
+The digest adds up to three lines per host, one per OOM-killed pod:
+
+```
+OOM team-a/api-6b7c9d-x2k4p · container app · 3 kills · limit 512Mi · Deployment team-a/api
+OOM pod UID 1a2b3c4d-… · 2 kills · pod no longer exists
+```
+
+The memory limit and the owning workload come from the cluster API. On
+the Kubernetes VLAN, the collectors are control-plane nodes with `kubectl`
+and the rke2 kubeconfig, so `collector.kubernetes_lookup` (on by default)
+asks the API once per digest, and only when some host reported an OOM-killed
+pod.
+
+The lookup only ever runs `kubectl get pods`. lhc's only way to run kubectl
+refuses any other verb, impersonation (`--as`), raw API paths and manifest
+files. A collector without kubectl or a kubeconfig skips the lookup without
+a word. The digest lines then show what the host sent: pod, process, count
+and `container limit`. If the API call fails, the digest still goes out,
+with `Kubernetes lookup failed: …` in its footer. `lhc hub status` shows
+whether the lookup is on, off or unavailable.
+
+The rke2 kubeconfig (`/etc/rancher/rke2/rke2.yaml`) is cluster-admin. To
+have RBAC enforce the read-only promise as well, point
+`checks.kubernetes.kubeconfig` at a kubeconfig whose role allows only
+`get` and `list` on pods (and what the `kubernetes` check reads: nodes,
+PVCs, events).
+
 ## Files
 
 | | root | user |

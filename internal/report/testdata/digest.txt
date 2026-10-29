@@ -2,7 +2,7 @@
   lhc hub digest v1.2.3  ·  via lhc-c1.example.com
   2026-10-21 09:00 -03
   Overall Status: ✕  UNHEALTHY
-  40 hosts · 36 OK · 1 CAUTION · 1 UNHEALTHY · 1 SILENT
+  40 hosts · 36 OK · 2 CAUTION · 1 UNHEALTHY · 1 SILENT
 ==============================================================================
 
   COLLECTORS
@@ -24,6 +24,11 @@
        (+1 more)
   !  web01.example.com              CAUTION
        - Reboot pending for more than 14 days
+  !  worker01.example.com           CAUTION
+       - OOM Killer: 5 kill(s) today
+         OOM team-a/api-6b7c9d-x2k4p · container app · 3 kills · limit 512Mi
+           · Deployment team-a/api
+         OOM pod UID 9f8e7d6c-… · 2 kills · pod no longer exists
 
   NEW HOSTS since the last digest
      web02.example.com

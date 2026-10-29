@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/kube"
 	"github.com/thyarles/lhc/internal/runner"
 )
 
@@ -95,13 +95,8 @@ func (c *Config) Validate() error {
 }
 
 const (
-	// requestTimeout goes to kubectl itself (--request-timeout), so a
-	// kubectl still retrying the API gives up on its own.
-	requestTimeout = 15 * time.Second
-	// callTimeout bounds each kubectl process from the outside.
-	callTimeout = requestTimeout + 10*time.Second
 	// crictlTimeout bounds the local image listing.
-	crictlTimeout = requestTimeout
+	crictlTimeout = kube.RequestTimeout
 	listCap       = 10
 )
 
@@ -119,19 +114,6 @@ var (
 		"certificate has expired", "x509", "invalid bearer token",
 	}
 )
-
-// kube runs kubectl against one kubeconfig.
-type kube struct {
-	r    runner.Runner
-	bin  string
-	base []string
-}
-
-func (k kube) run(ctx context.Context, args ...string) runner.Result {
-	ctx, cancel := runner.WithTimeout(ctx, callTimeout)
-	defer cancel()
-	return k.r.Run(ctx, k.bin, append(slices.Clone(k.base), args...)...)
-}
 
 // combined is stdout and stderr together, what `2>&1` used to give: kubectl
 // reports most failures on stderr, "No resources found" included.
@@ -195,8 +177,8 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	s := check.NewSection("kubernetes", c.Meta().Title)
 	scope := normScope(cfg.Scope)
 
-	kubectl := kubectlBin(env.Runner)
-	kcfg := kubeconfigPath(env.Runner, cfg.Kubeconfig)
+	k := kube.Find(env.Runner, cfg.Kubeconfig)
+	kcfg := k.Kubeconfig
 
 	// A kubectl with nothing to talk to says nothing worth printing, and a
 	// host that will never run Kubernetes must not be told to install it.
@@ -207,21 +189,17 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 		// running dozens of pods.
 		s.Add("Node Role", "Worker node (no kubeconfig here)", check.Info)
 		return s
-	case kubectl == "" && kcfg == "":
+	case !k.HasKubectl() && kcfg == "":
 		s.NotApplicable("Not a Kubernetes node")
 		return s
 	case kcfg == "":
 		s.NotApplicable("kubectl present but no readable kubeconfig (client-only host)")
 		return s
-	case kubectl == "":
+	case !k.HasKubectl():
 		s.Add("kubectl", fmt.Sprintf("kubeconfig at %s but kubectl is not installed", kcfg), check.Info)
 		s.NeedTool(check.Tool{Name: "kubectl", RHELPkg: "kubernetes-client", DebPkg: "kubectl", Optional: true})
 		return s
 	}
-
-	k := kube{r: env.Runner, bin: kubectl, base: []string{
-		"--kubeconfig", kcfg, fmt.Sprintf("--request-timeout=%ds", int(requestTimeout/time.Second)),
-	}}
 
 	// The node query IS the reachability probe: no wasted round trip, and no
 	// `get --raw /readyz`, which needs a nonResourceURL grant a restricted

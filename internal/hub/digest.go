@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/kube"
 	"github.com/thyarles/lhc/internal/report"
 	"github.com/thyarles/lhc/internal/state"
 )
@@ -67,6 +68,10 @@ type DigestOptions struct {
 	Order     []string
 	Rank      int
 	Slot      time.Time
+	// Cluster is every pod of the cluster by UID, for the OOM lines; nil
+	// when it was not asked. LookupErr is why asking failed.
+	Cluster   map[string]kube.Pod
+	LookupErr string
 }
 
 // BuildDigest classifies every host and returns the digest, plus the state
@@ -74,7 +79,7 @@ type DigestOptions struct {
 func BuildDigest(entries []Entry, prev DigestState, o DigestOptions) (*report.Digest, DigestState) {
 	d := &report.Digest{
 		Collector: o.Self, Version: o.Version, Generated: o.Now, SilentAfter: o.SilentAfter,
-		Total: len(entries),
+		Total: len(entries), LookupErr: o.LookupErr,
 	}
 	next := DigestState{Hosts: map[string]string{}}
 	last := map[string]time.Time{}
@@ -114,6 +119,7 @@ func BuildDigest(entries []Entry, prev DigestState, o DigestOptions) (*report.Di
 			}
 			h.Alerts = append(h.Alerts, a.Msg)
 		}
+		h.Details = oomLines(e.Pods, o.Cluster)
 		d.NotOK = append(d.NotOK, h)
 	}
 	slices.SortStableFunc(d.NotOK, func(a, b report.DigestHost) int { return int(b.Status) - int(a.Status) })

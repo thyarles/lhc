@@ -8,6 +8,7 @@ import (
 
 	"github.com/thyarles/lhc/internal/check"
 	"github.com/thyarles/lhc/internal/checktest"
+	"github.com/thyarles/lhc/internal/kube"
 	"github.com/thyarles/lhc/internal/runner"
 	"github.com/thyarles/lhc/internal/state"
 )
@@ -40,9 +41,9 @@ func newEnv(t *testing.T, mutate ...func(*Config)) *checktest.Env {
 
 func setenv(t *testing.T, vars map[string]string) {
 	t.Helper()
-	old := Getenv
-	Getenv = func(k string) string { return vars[k] }
-	t.Cleanup(func() { Getenv = old })
+	old := kube.Getenv
+	kube.Getenv = func(k string) string { return vars[k] }
+	t.Cleanup(func() { kube.Getenv = old })
 }
 
 // found wires up discovery the rke2 way: kubectl only at its absolute path
@@ -105,39 +106,6 @@ func TestKubectlOnPathIsPreferred(t *testing.T) {
 	e.Run(Check{})
 	if !e.Fake.Ran("/usr/bin/kubectl --kubeconfig") || e.Fake.Ran(rke2Kubectl) {
 		t.Fatalf("calls: %q", e.Fake.Calls())
-	}
-}
-
-func TestKubeconfigDiscoveryOrder(t *testing.T) {
-	cases := []struct {
-		name     string
-		explicit string
-		env      map[string]string
-		files    []string
-		unread   []string
-		want     string
-	}{
-		{name: "explicit beats everything", explicit: "/srv/kc", files: []string{"/srv/kc", "/env/kc", rke2Config}, env: map[string]string{"KUBECONFIG": "/env/kc"}, want: "/srv/kc"},
-		{name: "$KUBECONFIG beats the well-known paths", files: []string{"/env/kc", rke2Config}, env: map[string]string{"KUBECONFIG": "/env/kc"}, want: "/env/kc"},
-		{name: "node admin config beats a copied ~/.kube/config", files: []string{"/etc/kubernetes/admin.conf", "/root/.kube/config"}, want: "/etc/kubernetes/admin.conf"},
-		{name: "$HOME is last", files: []string{"/home/ops/.kube/config"}, env: map[string]string{"HOME": "/home/ops"}, want: "/home/ops/.kube/config"},
-		{name: "an unreadable file is skipped", files: []string{"/etc/rancher/k3s/k3s.yaml"}, unread: []string{rke2Config}, want: "/etc/rancher/k3s/k3s.yaml"},
-		{name: "a missing explicit path falls through", explicit: "/nope", files: []string{rke2Config}, want: rke2Config},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			setenv(t, c.env)
-			f := checktest.NewRunner()
-			for _, p := range c.files {
-				f.File(p, "x")
-			}
-			for _, p := range c.unread {
-				f.Unreadable(p)
-			}
-			if got := kubeconfigPath(f, c.explicit); got != c.want {
-				t.Fatalf("got %q, want %q", got, c.want)
-			}
-		})
 	}
 }
 
