@@ -22,6 +22,7 @@ import (
 	"github.com/thyarles/lhc/internal/report"
 	"github.com/thyarles/lhc/internal/schedule"
 	"github.com/thyarles/lhc/internal/state"
+	tw "github.com/thyarles/lhc/internal/textwrap"
 	"github.com/thyarles/lhc/internal/version"
 )
 
@@ -164,6 +165,13 @@ func (a *app) pass(ctx context.Context, o runOpts) error {
 	// tomorrow. Deferred state means returning here saves nothing.
 	if ctx.Err() != nil {
 		return &exitError{code: 130, err: errInterrupted}
+	}
+	if o.deliver && a.cfg.Collector.Enabled && a.cfg.Collector.DigestMode == "one" {
+		sec := a.relaySection(ctx, h)
+		res.Sections = append(res.Sections, sec)
+		res.Overall = check.Worse(res.Overall, sec.Status)
+		res.Alerts = append(res.Alerts, sec.Alerts...)
+		say("  Digest relay: %s", sec.Rows[0].Value)
 	}
 	say("  Overall status: %s", res.Overall.Word())
 
@@ -339,6 +347,25 @@ func (a *app) seal(m *report.Model) (*hub.Envelope, error) {
 	// Stamped now, not when the checks started: a slow run plus a mail
 	// retry can take minutes, and the collector allows ten.
 	return hub.Seal(key, m.Host, a.now(), body)
+}
+
+// relaySection checks, on a collector that may have to send the hub's
+// digest, that it can reach the relay: connect, EHLO, TLS and AUTH as
+// configured, QUIT. No mail is sent. With one digest per hub, a standby's
+// mail path is otherwise only tried the day it has to take over. The alert
+// has no digits: its text is its identity.
+func (a *app) relaySection(ctx context.Context, h check.Host) *check.Section {
+	s := check.NewSection(hub.RelaySection, "Hub Collector")
+	snd := a.sender(h)
+	snd.Retry = mailRetry
+	if err := snd.Probe(ctx); err != nil {
+		s.Add(hub.RelayRow, tw.Truncate(err.Error(), 120), check.Caution,
+			check.Detail("this collector sends the hub's digest when the ones before it do not"))
+		s.Alert(check.Caution, hub.RelayAlert)
+		return s
+	}
+	s.Add(hub.RelayRow, fmt.Sprintf("reachable (%s:%d)", a.cfg.SMTP.Host, a.cfg.SMTP.Port), check.OK)
+	return s
 }
 
 // errInterrupted ends a pass cut short by a signal.

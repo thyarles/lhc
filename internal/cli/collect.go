@@ -24,10 +24,15 @@ func newCollectCmd(a *app) *cobra.Command {
 		Long: `Listen on collector.listen for the encrypted reports that hosts send after
 every run, and keep the latest one from each host in <state_dir>/hub/.
 
-Only POST /v1/report is answered, with 204 or an empty 400; nothing is ever
-sent back to a host. Each accepted or refused report is one line on stderr
-(the journal, under systemd), with the reason for a refusal. SIGHUP re-reads
-the config and the hub key; SIGINT or SIGTERM stop it.`,
+Only POST /v1/report, and a peer collector's POST /v1/digest-sent, are
+answered, with 204 or an empty 400; nothing is ever sent back to a host.
+Each accepted or refused request is one line on stderr (the journal, under
+systemd), with the reason for a refusal.
+
+It also mails the daily digest at collector.digest_time. With
+collector.digest_mode one, collectors take turns by name and tell each
+other, so the hub sends one digest a day. SIGHUP re-reads the config and
+the hub key; SIGINT or SIGTERM stop it.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)

@@ -36,6 +36,12 @@ type Digest struct {
 	NewestHosts int
 	Older       []string
 	OlderMore   int
+	// One digest per hub (collector.digest_mode one): the other collectors,
+	// standing by, and the ones before this one that had not sent by Slot.
+	OnePerHub bool
+	Standby   []string
+	Missed    []string
+	Slot      time.Time
 }
 
 // OlderListed is how many hosts behind the newest version the digest names.
@@ -62,6 +68,8 @@ type DigestPeer struct {
 	// binary, is newer than the running `lhc collect`: an upgrade that did
 	// not restart the service (#36).
 	Running, Installed string
+	// RelayErr is the collector's failed nightly relay check.
+	RelayErr string
 }
 
 // Count is how many hosts are at a status, the silent ones apart.
@@ -120,7 +128,7 @@ func (p DigestPeer) Status() check.Status {
 	switch {
 	case p.Silent:
 		return check.Unhealthy
-	case p.Installed != "":
+	case p.Installed != "", p.RelayErr != "":
 		return check.Caution
 	}
 	return check.OK
@@ -128,6 +136,14 @@ func (p DigestPeer) Status() check.Status {
 
 // PeerText is what the digest says about a collector.
 func (d *Digest) PeerText(p DigestPeer) string {
+	s := d.peerState(p)
+	if p.RelayErr != "" && !p.Silent {
+		s += " · relay unreachable: " + tw.Truncate(p.RelayErr, 80)
+	}
+	return s
+}
+
+func (d *Digest) peerState(p DigestPeer) string {
 	switch {
 	case p.Silent && p.Last.IsZero():
 		return "SILENT, never reported here"
@@ -155,6 +171,20 @@ func (d *Digest) Totals() string {
 		parts = append(parts, plural(d.Reboot, "host")+" waiting for a reboot")
 	}
 	return strings.Join(parts, " · ")
+}
+
+// SenderLine says which collector sent a one-per-hub digest and why, or ""
+// when every collector sends its own.
+func (d *Digest) SenderLine() string {
+	switch {
+	case !d.OnePerHub:
+		return ""
+	case len(d.Missed) > 0:
+		return "Sent by " + d.Collector + ": no digest from " + strings.Join(d.Missed, ", ") + " by " + d.Slot.In(d.Generated.Location()).Format("15:04")
+	case len(d.Standby) > 0:
+		return "Sent by " + d.Collector + " · standby " + strings.Join(d.Standby, ", ")
+	}
+	return "Sent by " + d.Collector
 }
 
 // VersionsLine names the hosts behind the newest lhc, or "" when every
@@ -275,6 +305,12 @@ func DigestText(d *Digest) string {
 		}
 		wrapped := tw.Wrap(t, W-2, "  ")
 		wrapped[0] = "  " + wrapped[0]
+		lines = append(lines, wrapped...)
+	}
+	if s := d.SenderLine(); s != "" {
+		wrapped := tw.Wrap(s, W-2, "  ")
+		wrapped[0] = "  " + wrapped[0]
+		lines = append(lines, "")
 		lines = append(lines, wrapped...)
 	}
 	lines = append(lines, "",

@@ -32,6 +32,9 @@ type app struct {
 	paths    paths.Paths
 	runner   *runner.System
 	now      func() time.Time
+
+	// label, worked out once per hostname setting (see label).
+	labelFor, labelVal string
 }
 
 func newApp(stdout, stderr io.Writer) *app {
@@ -75,6 +78,18 @@ func (a *app) logger(w io.Writer) *slog.Logger {
 }
 
 // hostInfo identifies the machine once per run.
+// label is this host's name in reports and in the hub, without the rest of
+// hostInfo. It is kept: the collector's digest scheduler asks every minute,
+// and hostInfo does a DNS lookup each time.
+func (a *app) label() string {
+	if a.labelVal == "" || a.labelFor != a.cfg.Hostname {
+		kernel := host.Kernel()
+		a.labelVal = host.Label(a.cfg.Hostname, kernel, host.Cached(func() string { return host.Resolve(kernel) }))
+		a.labelFor = a.cfg.Hostname
+	}
+	return a.labelVal
+}
+
 func (a *app) hostInfo() check.Host {
 	kernel := host.Kernel()
 	resolve := host.Cached(func() string { return host.Resolve(kernel) })

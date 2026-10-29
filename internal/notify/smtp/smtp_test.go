@@ -265,3 +265,58 @@ func TestSubjectIsEncodedAndDecodesBack(t *testing.T) {
 		t.Fatal("missing Message-ID or Date")
 	}
 }
+
+// A collector on standby checks its relay every night: the whole way to the
+// point of sending, and never a message.
+func TestProbeGoesAsFarAsAuthAndSendsNothing(t *testing.T) {
+	for _, c := range []struct {
+		mode string
+		opt  func(*smtptest.Server)
+		want string
+	}{
+		{"none", func(*smtptest.Server) {}, "EHLO QUIT"},
+		{"starttls", func(s *smtptest.Server) { s.OfferSTARTTLS = true; s.AuthMechs = "PLAIN" }, "EHLO STARTTLS EHLO AUTH QUIT"},
+		{"implicit", func(s *smtptest.Server) { s.Implicit = true; s.AuthMechs = "LOGIN" }, "EHLO AUTH QUIT"},
+	} {
+		s := server(t, c.opt)
+		snd := sender(s, c.mode)
+		if c.mode != "none" {
+			snd.Username, snd.Password = "user", "secret"
+		}
+		if err := snd.Probe(context.Background()); err != nil {
+			t.Fatalf("%s: %v", c.mode, err)
+		}
+		if got := strings.Join(s.Verbs(), " "); got != c.want {
+			t.Errorf("%s: %s, want %s", c.mode, got, c.want)
+		}
+		if len(s.Messages()) != 0 {
+			t.Errorf("%s: a message was sent", c.mode)
+		}
+	}
+}
+
+func TestProbeFailsLikeASendWould(t *testing.T) {
+	s := server(t)
+	if err := sender(s, "starttls").Probe(context.Background()); err == nil || !strings.Contains(err.Error(), "does not offer STARTTLS") {
+		t.Fatal(err)
+	}
+	dead := &Sender{Config: Config{Host: "127.0.0.1", Port: 1, Timeout: time.Second}}
+	if err := dead.Probe(context.Background()); err == nil || !strings.Contains(err.Error(), "connect 127.0.0.1:1") {
+		t.Fatal(err)
+	}
+}
+
+func TestProbeRetriesABusyRelayOnce(t *testing.T) {
+	s := server(t, func(s *smtptest.Server) { s.TempFailHello = 1 })
+	snd := sender(s, "none")
+	snd.Retry = 10 * time.Millisecond
+	if err := snd.Probe(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	s2 := server(t, func(s *smtptest.Server) { s.TempFailHello = 2 })
+	snd2 := sender(s2, "none")
+	snd2.Retry = 10 * time.Millisecond
+	if err := snd2.Probe(context.Background()); err == nil || !Temporary(err) {
+		t.Fatalf("want the second 421 back, got %v", err)
+	}
+}

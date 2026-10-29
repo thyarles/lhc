@@ -5,6 +5,7 @@ package e2e
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime"
 	"net"
@@ -434,5 +435,69 @@ func TestADigestWithNoReportsSaysSo(t *testing.T) {
 	h.run(1, "hub", "digest", "--dry-run")
 	if !strings.Contains(h.stderr, "no reports yet") {
 		t.Fatalf("stderr:\n%s", h.stderr)
+	}
+}
+
+// With one digest per hub, a collector's nightly run checks it could send
+// the digest if its turn came: connect, EHLO, QUIT, never a message.
+func TestACollectorChecksItsRelayEveryRun(t *testing.T) {
+	c := newHost(t, relay(t))
+	key := keygen(t, c)
+	col := startCollector(t, c, key)
+	c.run(0, "config", "set", "hub.collectors="+col.url, "hostname=c1.example.com")
+
+	c.run(0, "report")
+	if v := c.relay.Verbs(); len(v) != 0 {
+		t.Fatalf("lhc report talked to the relay: %v", v)
+	}
+	c.run(0, "run", "--dry-run")
+	if v := c.relay.Verbs(); len(v) != 0 {
+		t.Fatalf("lhc run --dry-run talked to the relay: %v", v)
+	}
+
+	c.run(0, "run")
+	if !strings.Contains(c.stderr, "Digest relay: reachable (127.0.0.1:") {
+		t.Fatalf("stderr:\n%s", c.stderr)
+	}
+	// The probe sent no message: the only one is the run's own mail.
+	if n := len(c.relay.Messages()); n != 1 {
+		t.Fatalf("%d messages", n)
+	}
+	rep := col.stored(t, "c1.example.com")
+	if !strings.Contains(fmt.Sprint(rep["sections"]), "Digest Relay") {
+		t.Fatalf("no relay row in the stored report: %v", rep["sections"])
+	}
+	c.run(0, "hub", "status")
+	for _, want := range []string{"Digest: one per hub · this collector is #1 of 1", "Relay: reachable"} {
+		if !strings.Contains(c.stdout, want) {
+			t.Fatalf("hub status lacks %q:\n%s", want, c.stdout)
+		}
+	}
+
+	// The relay goes away: the run says so at CAUTION, with a stable alert.
+	// The collector holds this run's report, so no mail is due: exit 0.
+	c.run(0, "config", "set", "smtp.port=1")
+	c.run(0, "run")
+	if !strings.Contains(c.stderr, "Digest relay: connect 127.0.0.1:1") {
+		t.Fatalf("stderr:\n%s", c.stderr)
+	}
+	rep = col.stored(t, "c1.example.com")
+	if !strings.Contains(fmt.Sprint(rep["sections"]), "Digest relay unreachable from this collector") {
+		t.Fatalf("no relay alert in the stored report: %v", rep["sections"])
+	}
+	c.run(0, "hub", "status")
+	if !strings.Contains(c.stdout, "Relay: unreachable") {
+		t.Fatalf("hub status:\n%s", c.stdout)
+	}
+}
+
+func TestAHostThatIsNotACollectorNeverChecksTheRelay(t *testing.T) {
+	h := newHost(t, relay(t))
+	h.run(0, "run")
+	if strings.Contains(h.stderr, "Digest relay") {
+		t.Fatalf("stderr:\n%s", h.stderr)
+	}
+	if v := strings.Join(h.relay.Verbs(), " "); strings.Count(v, "EHLO") != 1 {
+		t.Fatalf("more than the run's own mail: %s", v)
 	}
 }

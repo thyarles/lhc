@@ -126,6 +126,12 @@ type Collector struct {
 	SilentAfter Duration `yaml:"silent_after"`
 	// Host names of the other collectors, shown first in the digest.
 	Peers []string `yaml:"peers"`
+	// one: the first collector by name sends the hub's digest and tells the
+	// others; the next one sends only when it heard nothing by its own slot.
+	// each: every collector sends its own.
+	DigestMode string `yaml:"digest_mode"`
+	// The gap between one collector's digest slot and the next one's.
+	TakeoverAfter Duration `yaml:"takeover_after"`
 }
 
 // Default is the configuration a host runs with when its file says nothing.
@@ -146,6 +152,7 @@ func Default() *Config {
 		Collector: Collector{
 			Listen: ":8461", MaxReportSize: 1 << 20,
 			DigestTime: "09:00", DigestRecipients: []string{}, SilentAfter: Duration(26 * time.Hour), Peers: []string{},
+			DigestMode: "one", TakeoverAfter: Duration(15 * time.Minute),
 		},
 		Checks: map[string]check.Config{},
 	}
@@ -349,6 +356,14 @@ func (c *Config) Validate() error {
 	}
 	if _, _, err := ParseTime(c.Collector.DigestTime); err != nil {
 		bad("collector.digest_time: %v", err)
+	}
+	switch c.Collector.DigestMode {
+	case "one", "each":
+	default:
+		bad("collector.digest_mode: %q is not one of one, each", c.Collector.DigestMode)
+	}
+	if d := c.Collector.TakeoverAfter.D(); d < 5*time.Minute || d > 2*time.Hour {
+		bad("collector.takeover_after: %s is not between 5m and 2h", c.Collector.TakeoverAfter)
 	}
 	if d := c.Collector.SilentAfter.D(); d < time.Hour {
 		bad("collector.silent_after: %s is under 1h; hosts report at most every hour", c.Collector.SilentAfter)
