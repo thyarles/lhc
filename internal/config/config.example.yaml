@@ -123,6 +123,13 @@ collector:
   # Give every collector of a hub the same digest_time and takeover_after.
   digest_mode: one
   takeover_after: 15m
+  # Add the container's memory limit and the owning workload to each pod a
+  # host reports as OOM-killed. It only ever runs `kubectl get pods`, once
+  # per digest and only when some host reported an OOM kill, with the
+  # kubeconfig of checks.kubernetes.kubeconfig or the default locations
+  # (/etc/rancher/rke2/rke2.yaml, ...). A collector without kubectl or a
+  # kubeconfig skips it; nothing is needed on hosts without Kubernetes.
+  kubernetes_lookup: true
 
 checks:
   system:

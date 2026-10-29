@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/kube"
 )
 
 type node struct {
@@ -38,8 +39,8 @@ var pressureConds = []string{"MemoryPressure", "DiskPressure", "PIDPressure", "N
 // jsonpath rather than the table because the ROLES column spelling changed
 // twice and STATUS is a comma-joined token. --allow-missing-template-keys
 // because .spec.unschedulable is omitempty and absent on every healthy node.
-func getNodes(ctx context.Context, k kube) ([]node, string) {
-	res := k.run(ctx, "get", "nodes", "-o", "jsonpath="+nodesJSONPath, "--allow-missing-template-keys=true")
+func getNodes(ctx context.Context, k kube.Cluster) ([]node, string) {
+	res := k.Get(ctx, "nodes", "-o", "jsonpath="+nodesJSONPath, "--allow-missing-template-keys=true")
 	out := combined(res)
 	if !res.OK() || out == "" || strings.HasPrefix(strings.ToLower(out), "error") {
 		return nil, failure(res, "no output")

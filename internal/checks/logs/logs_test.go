@@ -95,12 +95,12 @@ func TestSSHBruteForceMinIsConfigurable(t *testing.T) {
 
 func TestEscalationShowsTheRecentEntries(t *testing.T) {
 	e := logsEnv(t, nil, nil)
-	e.Fake.Expect("oom.kill", "Jan  5 03:00:01 host kernel: Out of memory: Killed process 1 (java)\n"+
-		"Jan  5 04:00:01 host kernel: Out of memory: Killed process 2 ("+strings.Repeat("x", 200)+")")
+	e.Fake.Expect("I/O error", "Jan  5 03:00:01 host kernel: blk_update_request: I/O error, dev sda, sector 1\n"+
+		"Jan  5 04:00:01 host kernel: blk_update_request: I/O error, dev "+strings.Repeat("x", 200))
 	s := e.Run(Check{})
 	labels := checktest.Labels(s)
 	i := slices.Index(labels, "Recent entries")
-	if i != 1 || labels[i+1] != "" || labels[i+2] != "" {
+	if i != 2 || labels[i+1] != "" || labels[i+2] != "" {
 		t.Fatalf("labels: %q", labels)
 	}
 	if r := s.Rows[i+2]; r.Status != check.Caution || len([]rune(r.Value)) != 120 {

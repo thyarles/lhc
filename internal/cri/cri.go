@@ -68,6 +68,9 @@ const Timeout = 10 * time.Second
 // .../<id>. A pod UID has dashes or underscores, so it never matches.
 var containerID = regexp.MustCompile(`[0-9a-f]{64}`)
 
+// ContainerID is the 64-hex container ID in a cgroup path, or "".
+func ContainerID(path string) string { return containerID.FindString(path) }
+
 // Pod is "namespace/name" of the pod that pid runs in, or "" when it is not
 // in a pod or crictl cannot say.
 func Pod(ctx context.Context, r runner.Runner, pid string) string {
@@ -79,27 +82,65 @@ func Pod(ctx context.Context, r runner.Runner, pid string) string {
 	if id == nil {
 		return ""
 	}
-	bin := Bin(r)
-	if bin == "" {
+	c, ok := Container(ctx, r, string(id))
+	if !ok {
 		return ""
 	}
-	ctx, cancel := runner.WithTimeout(ctx, Timeout)
-	defer cancel()
-	res := r.Run(ctx, bin, Args(r, "inspect", string(id))...)
-	if !res.OK() {
-		return ""
-	}
+	return c.Pod()
+}
+
+// Ref is a container and the pod it belongs to.
+type Ref struct {
+	Namespace, Name string // the pod
+	Container       string // "" when only the pod is known
+}
+
+// Pod is "namespace/name".
+func (c Ref) Pod() string { return c.Namespace + "/" + c.Name }
+
+// Container names the pod and container of a container ID. It works as long
+// as the runtime still holds the container, exited ones included; false
+// when crictl is missing, fails, or the container has no pod labels.
+func Container(ctx context.Context, r runner.Runner, id string) (Ref, bool) {
 	var c struct {
 		Status struct {
 			Labels map[string]string `json:"labels"`
 		} `json:"status"`
 	}
-	if json.Unmarshal([]byte(res.Stdout), &c) != nil {
-		return ""
+	if !crictl(ctx, r, &c, "inspect", id) {
+		return Ref{}, false
 	}
-	ns, name := c.Status.Labels["io.kubernetes.pod.namespace"], c.Status.Labels["io.kubernetes.pod.name"]
-	if ns == "" || name == "" {
-		return ""
+	l := c.Status.Labels
+	ref := Ref{l["io.kubernetes.pod.namespace"], l["io.kubernetes.pod.name"], l["io.kubernetes.container.name"]}
+	return ref, ref.Namespace != "" && ref.Name != ""
+}
+
+// PodByUID names the pod with this UID while it still runs on the node,
+// even after the container that was killed is gone.
+func PodByUID(ctx context.Context, r runner.Runner, uid string) (Ref, bool) {
+	var out struct {
+		Items []struct {
+			Metadata struct {
+				Name      string `json:"name"`
+				Namespace string `json:"namespace"`
+			} `json:"metadata"`
+		} `json:"items"`
 	}
-	return ns + "/" + name
+	if !crictl(ctx, r, &out, "pods", "--label", "io.kubernetes.pod.uid="+uid, "-o", "json") || len(out.Items) == 0 {
+		return Ref{}, false
+	}
+	m := out.Items[0].Metadata
+	return Ref{Namespace: m.Namespace, Name: m.Name}, m.Namespace != "" && m.Name != ""
+}
+
+// crictl runs one crictl command and decodes its JSON into v.
+func crictl(ctx context.Context, r runner.Runner, v any, args ...string) bool {
+	bin := Bin(r)
+	if bin == "" {
+		return false
+	}
+	ctx, cancel := runner.WithTimeout(ctx, Timeout)
+	defer cancel()
+	res := r.Run(ctx, bin, Args(r, args...)...)
+	return res.OK() && json.Unmarshal([]byte(res.Stdout), v) == nil
 }

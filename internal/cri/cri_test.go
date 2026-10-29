@@ -70,3 +70,36 @@ func TestCrictlIsFoundWhereRke2PutsIt(t *testing.T) {
 		t.Fatalf("args without a socket %q", got)
 	}
 }
+
+func TestContainerNamesThePodAndTheContainer(t *testing.T) {
+	r := checktest.NewRunner().Tool("crictl")
+	r.Expect("inspect "+id, `{"status":{"labels":{"io.kubernetes.pod.name":"api-6b7c9d-x2k4p","io.kubernetes.pod.namespace":"team-a","io.kubernetes.container.name":"app"}}}`)
+	got, ok := Container(context.Background(), r, id)
+	if !ok || got != (Ref{"team-a", "api-6b7c9d-x2k4p", "app"}) || got.Pod() != "team-a/api-6b7c9d-x2k4p" {
+		t.Fatalf("got %+v %v", got, ok)
+	}
+}
+
+func TestPodByUID(t *testing.T) {
+	const uid = "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"
+	r := checktest.NewRunner().Tool("crictl")
+	r.Expect("pods --label io.kubernetes.pod.uid="+uid+" -o json", `{"items":[{"id":"9f8e","metadata":{"name":"api-6b7c9d-x2k4p","uid":"`+uid+`","namespace":"team-a","attempt":0},"state":"SANDBOX_READY"}]}`)
+	got, ok := PodByUID(context.Background(), r, uid)
+	if !ok || got != (Ref{Namespace: "team-a", Name: "api-6b7c9d-x2k4p"}) {
+		t.Fatalf("got %+v %v", got, ok)
+	}
+	for name, setup := range map[string]func(r *checktest.Runner){
+		"no crictl":    func(r *checktest.Runner) {},
+		"crictl fails": func(r *checktest.Runner) { r.Tool("crictl").Expect("pods", "").Code(1) },
+		"no such pod":  func(r *checktest.Runner) { r.Tool("crictl").Expect("pods", `{"items":[]}`) },
+		"not JSON":     func(r *checktest.Runner) { r.Tool("crictl").Expect("pods", "POD ID  CREATED") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := checktest.NewRunner()
+			setup(r)
+			if got, ok := PodByUID(context.Background(), r, uid); ok {
+				t.Fatalf("got %+v", got)
+			}
+		})
+	}
+}

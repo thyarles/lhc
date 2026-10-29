@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"html/template"
+	"slices"
 	"strings"
 	"time"
 
@@ -42,10 +43,16 @@ type Digest struct {
 	Standby   []string
 	Missed    []string
 	Slot      time.Time
+	// LookupErr is why the cluster API could not be asked about the
+	// OOM-killed pods; "" when it was, or did not need to be.
+	LookupErr string
 }
 
 // OlderListed is how many hosts behind the newest version the digest names.
 const OlderListed = 5
+
+// DetailsListed is how many detail lines a host gets under its alerts.
+const DetailsListed = 3
 
 // DigestHost is one host the digest names.
 type DigestHost struct {
@@ -55,6 +62,9 @@ type DigestHost struct {
 	New    bool      // OK in the previous digest
 	Alerts []string  // its first two alerts, worst first
 	More   int       // alerts beyond those
+	// Details are lines about the alerts, at most DetailsListed: the
+	// OOM-killed pods, with what the cluster says about them.
+	Details []string
 }
 
 // DigestPeer is a collector of the same hub. It is alive when its own
@@ -187,6 +197,14 @@ func (d *Digest) SenderLine() string {
 	return "Sent by " + d.Collector
 }
 
+// LookupLine is the footer line of a failed cluster lookup, or "".
+func (d *Digest) LookupLine() string {
+	if d.LookupErr == "" {
+		return ""
+	}
+	return "Kubernetes lookup failed: " + tw.Truncate(d.LookupErr, 100)
+}
+
 // VersionsLine names the hosts behind the newest lhc, or "" when every
 // host runs the same version.
 func (d *Digest) VersionsLine() string {
@@ -288,6 +306,9 @@ func DigestText(d *Digest) string {
 			if h.More > 0 {
 				lines = append(lines, detailLines(fmt.Sprintf("(+%d more)", h.More))...)
 			}
+			for _, l := range h.Details {
+				lines = append(lines, indented("         ", l)...)
+			}
 		}
 	}
 
@@ -307,10 +328,16 @@ func DigestText(d *Digest) string {
 		wrapped[0] = "  " + wrapped[0]
 		lines = append(lines, wrapped...)
 	}
-	if s := d.SenderLine(); s != "" {
+	footer := false
+	for _, s := range []string{d.SenderLine(), d.LookupLine()} {
+		if s == "" {
+			continue
+		}
+		if !footer {
+			lines, footer = append(lines, ""), true
+		}
 		wrapped := tw.Wrap(s, W-2, "  ")
 		wrapped[0] = "  " + wrapped[0]
-		lines = append(lines, "")
 		lines = append(lines, wrapped...)
 	}
 	lines = append(lines, "",
@@ -342,8 +369,10 @@ func hostLines(host string, st check.Status, what string) []string {
 }
 
 // detailLines is a line under a host, indented past the glyph.
-func detailLines(s string) []string {
-	const indent = "       "
+func detailLines(s string) []string { return indented("       ", s) }
+
+// indented wraps s at indent, its continuation lines two further in.
+func indented(indent, s string) []string {
 	out := tw.Wrap(s, W-len(indent)-2, indent+"  ")
 	out[0] = indent + out[0]
 	return out
@@ -370,10 +399,11 @@ var digestTmpl = template.Must(template.Must(htmlTmpl.Clone()).Funcs(template.Fu
 		if h.New {
 			what += " · new"
 		}
-		lines := h.Alerts
+		lines := slices.Clone(h.Alerts)
 		if h.More > 0 {
-			lines = append(append([]string{}, lines...), fmt.Sprintf("(+%d more)", h.More))
+			lines = append(lines, fmt.Sprintf("(+%d more)", h.More))
 		}
+		lines = append(lines, h.Details...)
 		return dhost{h.Host, h.Status, what, lines}
 	},
 	"hours":  Hours,

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/kube"
 )
 
 // kubectl's AGE column, produced by apimachinery's HumanDuration: 45s, 5m30s,
@@ -86,12 +87,12 @@ var (
 	done     = []string{"completed", "succeeded"}
 )
 
-func podRows(ctx context.Context, s *check.Section, env *check.Env, cfg *Config, k kube, me *node) {
-	args := []string{"get", "pods", "--all-namespaces", "--no-headers"}
+func podRows(ctx context.Context, s *check.Section, env *check.Env, cfg *Config, k kube.Cluster, me *node) {
+	args := []string{"pods", "--all-namespaces", "--no-headers"}
 	if me != nil {
 		args = append(args, "--field-selector=spec.nodeName="+me.name)
 	}
-	res := k.run(ctx, args...)
+	res := k.Get(ctx, args...)
 	if !res.OK() {
 		s.Add("Pods", clip(firstLine(failure(res, "query failed")), 80), check.Info)
 		return

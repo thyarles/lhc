@@ -96,6 +96,7 @@ func newHubStatusCmd(a *app) *cobra.Command {
 				for _, l := range a.turnLines(store) {
 					a.printf("%s", l)
 				}
+				a.printf("%s", a.lookupLine())
 				for _, e := range entries {
 					switch {
 					case e.Host != a.label() || !e.RelayChecked:

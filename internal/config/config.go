@@ -132,6 +132,9 @@ type Collector struct {
 	DigestMode string `yaml:"digest_mode"`
 	// The gap between one collector's digest slot and the next one's.
 	TakeoverAfter Duration `yaml:"takeover_after"`
+	// Look OOM-killed pods up in the cluster API (kubectl get only) when
+	// this host has kubectl and a kubeconfig.
+	KubernetesLookup bool `yaml:"kubernetes_lookup"`
 }
 
 // Default is the configuration a host runs with when its file says nothing.
@@ -152,7 +155,7 @@ func Default() *Config {
 		Collector: Collector{
 			Listen: ":8461", MaxReportSize: 1 << 20,
 			DigestTime: "09:00", DigestRecipients: []string{}, SilentAfter: Duration(26 * time.Hour), Peers: []string{},
-			DigestMode: "one", TakeoverAfter: Duration(15 * time.Minute),
+			DigestMode: "one", TakeoverAfter: Duration(15 * time.Minute), KubernetesLookup: true,
 		},
 		Checks: map[string]check.Config{},
 	}

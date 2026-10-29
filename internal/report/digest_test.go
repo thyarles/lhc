@@ -27,6 +27,10 @@ func goldenDigest() *Digest {
 		NotOK: []DigestHost{
 			{Host: "db01.example.com", Status: check.Unhealthy, New: true, Alerts: []string{"Disk / at 97%", "Service postgresql.service failed"}, More: 1},
 			{Host: "web01.example.com", Status: check.Caution, Alerts: []string{"Reboot pending for more than 14 days"}},
+			{Host: "worker01.example.com", Status: check.Caution, Alerts: []string{"OOM Killer: 5 kill(s) today"}, Details: []string{
+				"OOM team-a/api-6b7c9d-x2k4p · container app · 3 kills · limit 512Mi · Deployment team-a/api",
+				"OOM pod UID 9f8e7d6c-… · 2 kills · pod no longer exists",
+			}},
 		},
 		NewHosts:  []string{"web02.example.com"},
 		Total:     40,
