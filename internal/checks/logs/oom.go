@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/checks/logscan"
 	"github.com/thyarles/lhc/internal/cri"
 )
 
@@ -21,6 +22,11 @@ import (
 const (
 	oomLabel   = "OOM Killer"
 	oomPattern = `oom.kill|Out of memory|Killed process|Task in .* killed as a result of limit`
+	// oomMaxLines is about 2000 kills, and about 4 MB at worst. A day with
+	// more still gets the right total, from countKills.
+	oomMaxLines = 8000
+	// One line per kill; an extended regex, for grep.
+	killedPattern = `Killed process [0-9]+ \(`
 )
 
 const (
@@ -285,11 +291,26 @@ func shortUID(uid string) string {
 	return first + "-…"
 }
 
-// oomRows reports today's kills: the count, the worst scope as the
-// severity (a host out of memory is UNHEALTHY, a container at its limit
-// CAUTION), one row per (pod, process), and the pods for the hub.
-func oomRows(ctx context.Context, s *check.Section, env *check.Env, p Pattern, kills []kill) {
-	n := len(kills)
+// countKills is today's kills past what the scan could hold. Without the
+// journal it is the largest count of any source, not their sum: syslog and
+// kern.log can hold the same kernel line.
+func countKills(ctx context.Context, env *check.Env, sources []string) int {
+	r, now := env.Runner, env.Now()
+	if _, ok := r.LookPath("journalctl"); ok {
+		return logscan.Count(ctx, r, now, "", killedPattern)
+	}
+	n := 0
+	for _, src := range sources {
+		n = max(n, logscan.Count(ctx, r, now, src, killedPattern))
+	}
+	return n
+}
+
+// oomRows reports today's n kills, of which kills are the ones read: the
+// count, the worst scope as the severity (a host out of memory is UNHEALTHY,
+// a container at its limit CAUTION), one row per (pod, process), and the
+// pods for the hub.
+func oomRows(ctx context.Context, s *check.Section, env *check.Env, p Pattern, kills []kill, n int) {
 	sev := p.Severity
 	for _, k := range kills {
 		if k.scope == scopeHost {
@@ -321,6 +342,9 @@ func oomRows(ctx context.Context, s *check.Section, env *check.Env, p Pattern, k
 			break
 		}
 		s.Add("", g.text(), g.status())
+	}
+	if rest := n - len(kills); rest > 0 {
+		s.Add("", fmt.Sprintf("… %d earlier kill(s) not itemised", rest), check.Info)
 	}
 	for _, g := range groups {
 		if g.scope != scopeContainer || (g.uid == "" && !g.pod) {

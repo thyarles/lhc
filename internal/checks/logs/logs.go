@@ -129,13 +129,22 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 			continue
 		}
 		scanned = true
-		lines := logscan.All(ctx, r, now, sources[src], p.Pattern)
+		limit := logscan.MaxLines
 		if p.Label == oomLabel {
+			limit = oomMaxLines
+		}
+		lines := logscan.Tail(ctx, r, now, sources[src], p.Pattern, limit)
+		if p.Label == oomLabel {
+			full := len(lines) >= oomMaxLines
 			// Kills when the kernel's wording is known; the line count of
 			// any other wording, so the check never goes quiet.
 			lines = todaysOOM(lines, now)
 			if kills := parseKills(lines, now); len(kills) > 0 || len(lines) == 0 {
-				oomRows(ctx, s, env, p, kills)
+				total := len(kills)
+				if full {
+					total = max(total, countKills(ctx, env, sources[src]))
+				}
+				oomRows(ctx, s, env, p, kills, total)
 				continue
 			}
 		}

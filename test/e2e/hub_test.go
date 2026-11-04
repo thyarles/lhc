@@ -502,18 +502,26 @@ func TestAHostThatIsNotACollectorNeverChecksTheRelay(t *testing.T) {
 	}
 }
 
-// oomWorker is a host whose kernel log holds one container-limit OOM kill
-// today; it has no crictl, so it can only send the pod's UID.
-func oomWorker(t *testing.T, key, collector string) *host {
+// oomWorker is a host whose kernel log holds n container-limit OOM kills
+// today, four matching lines each; it has no crictl, so it can only send
+// the pod's UID.
+func oomWorker(t *testing.T, key, collector string, n int) *host {
 	t.Helper()
 	h := hubHost(t, "w1.example.com", key, collector)
 	day := time.Now().Format("Jan 02")
-	slice := "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod1a2b3c4d_5e6f_7a8b_9c0d_1e2f3a4b5c6d.slice/cri-containerd-4f1d0c3b9a8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a392817060000.scope"
-	journal := strings.Join([]string{
-		day + " 00:01:40 w1 kernel: java invoked oom-killer: gfp_mask=0x6000c0(GFP_KERNEL), nodemask=(null), order=0, oom_score_adj=985",
-		day + " 00:01:40 w1 kernel: oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=x,mems_allowed=0,oom_memcg=" + slice + ",task_memcg=" + slice + ",task=java,pid=12345,uid=1000",
-		day + " 00:01:40 w1 kernel: Memory cgroup out of memory: Killed process 12345 (java) total-vm:8123456kB, anon-rss:524000kB",
-	}, "\n")
+	pod := "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod1a2b3c4d_5e6f_7a8b_9c0d_1e2f3a4b5c6d.slice"
+	slice := pod + "/cri-containerd-4f1d0c3b9a8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a392817060000.scope"
+	var lines []string
+	for i := range n {
+		at, pid := fmt.Sprintf("%s 00:%02d:%02d w1 kernel: ", day, i/60, i%60), 12345+i
+		lines = append(lines,
+			at+"java invoked oom-killer: gfp_mask=0x6000c0(GFP_KERNEL), nodemask=(null), order=0, oom_score_adj=985",
+			at+" oom_kill_process.cold.33+0xb/0x10",
+			fmt.Sprintf("%soom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=x,mems_allowed=0,oom_memcg=%s,task_memcg=%s,task=java,pid=%d,uid=1000", at, pod, slice, pid),
+			fmt.Sprintf("%sMemory cgroup out of memory: Killed process %d (java) total-vm:8123456kB, anon-rss:524000kB", at, pid),
+		)
+	}
+	journal := strings.Join(lines, "\n")
 	if err := os.WriteFile(filepath.Join(h.dir, "bin", "journalctl"), []byte("#!/bin/sh\ncat <<'EOF'\n"+journal+"\nEOF\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -544,7 +552,7 @@ func TestTheDigestNamesTheOOMKilledPodWithItsLimit(t *testing.T) {
 	key := keygen(t, c)
 	col := startCollector(t, c, key)
 	calls := kubectlOn(t, c)
-	w := oomWorker(t, key, col.url)
+	w := oomWorker(t, key, col.url, 1)
 	w.run(0, "run")
 	b, _ := json.Marshal(col.stored(t, "w1.example.com"))
 	if r := string(b); !strings.Contains(r, "OOM Killer: 1 kill(s) today") || !strings.Contains(r, `"reason":"oom_killed","uid":"1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"`) {
@@ -582,5 +590,25 @@ func TestTheDigestNamesTheOOMKilledPodWithItsLimit(t *testing.T) {
 	c.run(0, "hub", "status")
 	if !strings.Contains(c.stdout, "Kubernetes lookup: off (collector.kubernetes_lookup: false)") {
 		t.Fatalf("hub status:\n%s", c.stdout)
+	}
+}
+
+// 55 kills on a real worker read as 50: the scan kept 200 lines, and each
+// kill writes four. This goes through the real grep and tail.
+func TestEveryOOMKillIsCountedPastTheOldCap(t *testing.T) {
+	c := newHost(t, relay(t))
+	key := keygen(t, c)
+	col := startCollector(t, c, key)
+	oomWorker(t, key, col.url, 55).run(0, "run")
+
+	b, _ := json.Marshal(col.stored(t, "w1.example.com"))
+	for _, want := range []string{"OOM Killer: 55 kill(s) today", "55× java"} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("stored report lacks %q:\n%s", want, b)
+		}
+	}
+	c.run(0, "hub", "digest", "--dry-run")
+	if flat := strings.Join(strings.Fields(c.stdout), " "); !strings.Contains(flat, "OOM pod UID 1a2b3c4d-… · java · 55 kills · container limit") {
+		t.Fatalf("digest:\n%s", c.stdout)
 	}
 }

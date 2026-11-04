@@ -11,11 +11,12 @@ import (
 )
 
 const (
-	cid    = "4f1d0c3b9a8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a392817060000"
-	uid    = "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"
-	uidSD  = "1a2b3c4d_5e6f_7a8b_9c0d_1e2f3a4b5c6d" // the systemd cgroup driver's spelling
-	slice  = "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod" + uidSD + ".slice/cri-containerd-" + cid + ".scope"
-	podAPI = `{"status":{"labels":{"io.kubernetes.pod.name":"api-6b7c9d-x2k4p","io.kubernetes.pod.namespace":"team-a","io.kubernetes.container.name":"app"}}}`
+	cid      = "4f1d0c3b9a8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a392817060000"
+	uid      = "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"
+	uidSD    = "1a2b3c4d_5e6f_7a8b_9c0d_1e2f3a4b5c6d" // the systemd cgroup driver's spelling
+	podSlice = "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod" + uidSD + ".slice"
+	slice    = podSlice + "/cri-containerd-" + cid + ".scope"
+	podAPI   = `{"status":{"labels":{"io.kubernetes.pod.name":"api-6b7c9d-x2k4p","io.kubernetes.pod.namespace":"team-a","io.kubernetes.container.name":"app"}}}`
 )
 
 // rhel8Kill is one container-limit kill on a RHEL 8 rke2 worker, as the
@@ -24,7 +25,7 @@ func rhel8Kill(clock, pid string) string {
 	return strings.Join([]string{
 		"Jan 05 " + clock + " node1 kernel: java invoked oom-killer: gfp_mask=0x6000c0(GFP_KERNEL), nodemask=(null), order=0, oom_score_adj=985",
 		"Jan 05 " + clock + " node1 kernel:  oom_kill_process.cold.33+0xb/0x10",
-		"Jan 05 " + clock + " node1 kernel: oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=cri-containerd-" + cid + ".scope,mems_allowed=0,oom_memcg=" + slice + ",task_memcg=" + slice + ",task=java,pid=" + pid + ",uid=1000",
+		"Jan 05 " + clock + " node1 kernel: oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=cri-containerd-" + cid + ".scope,mems_allowed=0,oom_memcg=" + podSlice + ",task_memcg=" + slice + ",task=java,pid=" + pid + ",uid=1000",
 		"Jan 05 " + clock + " node1 kernel: Memory cgroup out of memory: Killed process " + pid + " (java) total-vm:8123456kB, anon-rss:524000kB, file-rss:21000kB, shmem-rss:0kB, UID:1000 pgtables:1500kB oom_score_adj:985",
 		"Jan 05 " + clock + " node1 kernel: oom_reaper: reaped process " + pid + " (java), now anon-rss:0kB, file-rss:0kB, shmem-rss:0kB",
 	}, "\n")
@@ -197,5 +198,87 @@ func TestOnlyTheFirstFiveKilledProcessesAreListed(t *testing.T) {
 	rows := killRows(s)
 	if len(rows) != 6 || rows[5].Value != "… 2 more" || rows[0].Value != "1× proc6 · host · last 03:06" {
 		t.Fatalf("kill rows: %+v", rows)
+	}
+}
+
+func kills(n int) string {
+	var b strings.Builder
+	for i := range n {
+		fmt.Fprintf(&b, "%s\n", rhel8Kill(fmt.Sprintf("03:%02d:%02d", i/60%60, i%60), fmt.Sprint(1000+i)))
+	}
+	return b.String()
+}
+
+func countCalls(e *checktest.Env) int {
+	n := 0
+	for _, c := range e.Fake.Calls() {
+		if strings.Contains(c, "grep -cE 'Killed process") {
+			n++
+		}
+	}
+	return n
+}
+
+func TestAKillCountPastTheOldCapIsExact(t *testing.T) {
+	// 55 kills on a real worker read as 50 when 200 lines were kept.
+	e := oomEnv(t, kills(55))
+	s := e.Run(Check{})
+	if got := s.AlertMsgs(); !slices.Equal(got, []string{"OOM Killer: 55 kill(s) today"}) {
+		t.Fatalf("alerts: %q", got)
+	}
+	if len(s.Pods) != 1 || s.Pods[0].Count != 55 {
+		t.Fatalf("pods: %+v", s.Pods)
+	}
+	if !e.Fake.Ran("tail -8000") || !e.Fake.Ran("tail -200") {
+		t.Fatalf("caps: %q", e.Fake.Calls())
+	}
+	// The scan held them all: no second pass over the journal.
+	if n := countCalls(e); n != 0 {
+		t.Fatalf("counted %d time(s) after a scan that was not full", n)
+	}
+}
+
+func TestAFullScanTakesTheTotalFromACount(t *testing.T) {
+	e := logsEnv(t, nil, nil)
+	e.Fake.Expect("grep -cE 'Killed process [0-9]+ \\('", "5000")
+	e.Fake.Expect("Killed process", kills(oomMaxLines/5))
+	s := e.Run(Check{})
+	if got := s.AlertMsgs(); !slices.Equal(got, []string{"OOM Killer: 5000 kill(s) today"}) {
+		t.Fatalf("alerts: %q", got)
+	}
+	if n := countCalls(e); n != 1 {
+		t.Fatalf("counted %d time(s)", n)
+	}
+	rows := killRows(s)
+	if last := rows[len(rows)-1]; last.Value != "… 3400 earlier kill(s) not itemised" || last.Status != check.Info {
+		t.Fatalf("kill rows: %+v", rows)
+	}
+}
+
+func TestAFailedCountReadsAsTheKillsParsed(t *testing.T) {
+	e := logsEnv(t, nil, nil)
+	e.Fake.Expect("grep -cE 'Killed process", "")
+	e.Fake.Expect("Killed process", kills(oomMaxLines/5))
+	s := e.Run(Check{})
+	if got := s.AlertMsgs(); !slices.Equal(got, []string{"OOM Killer: 1600 kill(s) today"}) {
+		t.Fatalf("alerts: %q", got)
+	}
+	for _, r := range killRows(s) {
+		if strings.Contains(r.Value, "not itemised") {
+			t.Fatalf("row: %+v", r)
+		}
+	}
+}
+
+func TestWithoutTheJournalTheLargestCountIsUsed(t *testing.T) {
+	// syslog and kern.log can hold the same kernel line: never their sum.
+	e := checktest.NewEnv(t, Check{}, nil)
+	e.Fake.File("/var/log/syslog", "").File("/var/log/kern.log", "")
+	e.Fake.Expect("'/var/log/syslog' 2>/dev/null | grep -cE", "5000")
+	e.Fake.Expect("'/var/log/kern.log' 2>/dev/null | grep -cE", "4000")
+	e.Fake.Expect("'/var/log/syslog' 2>/dev/null | grep -iE 'oom.kill", strings.ReplaceAll(kills(oomMaxLines/5), "Jan 05", "Jan  5"))
+	s := e.Run(Check{})
+	if got := s.AlertMsgs(); !slices.Equal(got, []string{"OOM Killer: 5000 kill(s) today"}) {
+		t.Fatalf("alerts: %q", got)
 	}
 }
