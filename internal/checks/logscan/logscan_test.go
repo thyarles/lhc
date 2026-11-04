@@ -100,6 +100,17 @@ func TestSystemLogsListsOnlyWhatExists(t *testing.T) {
 	}
 }
 
+func TestTailPassesItsCapAndAllKeepsMaxLines(t *testing.T) {
+	f := checktest.NewRunner()
+	f.Tool("journalctl")
+	Tail(ctx, f, checktest.Now, nil, "x", 8000)
+	All(ctx, f, checktest.Now, nil, "x")
+	calls := f.Calls()
+	if len(calls) != 2 || !strings.HasSuffix(calls[0], "tail -8000") || !strings.HasSuffix(calls[1], "tail -200") {
+		t.Fatalf("calls: %q", calls)
+	}
+}
+
 func TestCountUsesTheJournalForToday(t *testing.T) {
 	f := checktest.NewRunner()
 	f.Tool("journalctl")

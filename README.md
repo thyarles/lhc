@@ -403,6 +403,10 @@ locally with `crictl`), or gives its UID when `crictl` cannot say. The alert
 text stays `OOM Killer: N kill(s) today` whichever pod was hit, so a new pod
 name after every deploy does not read as a new alert.
 
+The row and the alert give the exact number of kills. The rows per pod, and
+the digest's counts, cover about the newest 2000 kills of the day, and the
+report says when some were left out.
+
 The digest adds up to three lines per host, one per OOM-killed pod:
 
 ```

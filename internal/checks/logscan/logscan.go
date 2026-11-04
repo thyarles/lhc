@@ -113,13 +113,19 @@ func Today(ctx context.Context, r runner.Runner, now time.Time, sources []string
 
 // All is every line Today counts, oldest first, for a check that reads
 // them all rather than a few samples.
+func All(ctx context.Context, r runner.Runner, now time.Time, sources []string, pattern string) []string {
+	return Tail(ctx, r, now, sources, pattern, MaxLines)
+}
+
+// Tail is All with its own cap per source, for a pattern that writes
+// several lines per event.
 //
 // A pipeline rather than journalctl -g: RHEL 7's journalctl has no -g, and
 // streaming through grep keeps a noisy day's volume out of memory.
-func All(ctx context.Context, r runner.Runner, now time.Time, sources []string, pattern string) []string {
+func Tail(ctx context.Context, r runner.Runner, now time.Time, sources []string, pattern string, limit int) []string {
 	ctx, cancel := runner.WithTimeout(ctx, todayTimeout)
 	defer cancel()
-	tail := " | grep -iE " + Quote(pattern) + " | tail -" + strconv.Itoa(MaxLines)
+	tail := " | grep -iE " + Quote(pattern) + " | tail -" + strconv.Itoa(limit)
 	var lines []string
 	if _, ok := r.LookPath("journalctl"); ok {
 		return nonBlank(r.Shell(ctx, journal(now)+tail).Stdout)
