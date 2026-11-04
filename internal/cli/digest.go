@@ -5,13 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/thyarles/lhc/internal/checks/kubernetes"
 	"github.com/thyarles/lhc/internal/config"
 	"github.com/thyarles/lhc/internal/hub"
+	"github.com/thyarles/lhc/internal/kube"
 	"github.com/thyarles/lhc/internal/notify"
 	"github.com/thyarles/lhc/internal/report"
 	"github.com/thyarles/lhc/internal/version"
@@ -35,7 +38,7 @@ collector; --dry-run also prints this collector's turn and today's notice.`,
 				return err
 			}
 			store := a.hubStore()
-			d, _, err := a.buildDigest(store, nil)
+			d, _, err := a.buildDigest(cmd.Context(), store, nil)
 			if err != nil {
 				return err
 			}
@@ -62,7 +65,7 @@ func (a *app) hubStore() hub.Store { return hub.Store{Dir: filepath.Join(a.paths
 
 // buildDigest summarises the store as this collector sees it now. t is the
 // scheduled turn it is sent for; nil for one sent by hand.
-func (a *app) buildDigest(store hub.Store, t *turn) (*report.Digest, hub.DigestState, error) {
+func (a *app) buildDigest(ctx context.Context, store hub.Store, t *turn) (*report.Digest, hub.DigestState, error) {
 	entries, err := store.List()
 	if err != nil {
 		return nil, hub.DigestState{}, err
@@ -80,8 +83,53 @@ func (a *app) buildDigest(store hub.Store, t *turn) (*report.Digest, hub.DigestS
 	if t != nil && t.one {
 		o.OnePerHub, o.Order, o.Rank, o.Slot = true, t.order, t.rank, t.slot
 	}
+	o.Cluster, o.LookupErr = a.lookupPods(ctx, entries)
 	d, next := hub.BuildDigest(entries, store.LoadDigest(), o)
 	return d, next, nil
+}
+
+// cluster is kubectl as the kubernetes check finds it on this host.
+func (a *app) cluster() kube.Cluster {
+	explicit := ""
+	if c, ok := a.cfg.Check("kubernetes").(*kubernetes.Config); ok {
+		explicit = c.Kubeconfig
+	}
+	return kube.Find(a.runner, explicit)
+}
+
+// lookupPods asks the cluster about every pod, once, when a host reported
+// an OOM-killed pod and collector.kubernetes_lookup allows it. It is silent
+// when this collector has no kubectl or kubeconfig; a failed call is
+// returned for the digest's footer, never as an alert: the kubernetes
+// check on this host already alerts on an unusable API.
+func (a *app) lookupPods(ctx context.Context, entries []hub.Entry) (map[string]kube.Pod, string) {
+	if !a.cfg.Collector.KubernetesLookup || !slices.ContainsFunc(entries, func(e hub.Entry) bool { return len(e.Pods) > 0 }) {
+		return nil, ""
+	}
+	c := a.cluster()
+	if !c.Ready() {
+		return nil, ""
+	}
+	pods, err := c.Pods(ctx)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return pods, ""
+}
+
+// lookupLine is hub status's word on the cluster lookup.
+func (a *app) lookupLine() string {
+	if !a.cfg.Collector.KubernetesLookup {
+		return "  Kubernetes lookup: off (collector.kubernetes_lookup: false)"
+	}
+	c := a.cluster()
+	switch {
+	case !c.HasKubectl():
+		return "  Kubernetes lookup: unavailable (no kubectl)"
+	case c.Kubeconfig == "":
+		return "  Kubernetes lookup: unavailable (no kubeconfig)"
+	}
+	return "  Kubernetes lookup: on (kubeconfig " + c.Kubeconfig + ")"
 }
 
 // turn is this collector's place in the hub's digest rota.
@@ -205,7 +253,7 @@ func (g *digester) tick(ctx context.Context) {
 		return
 	}
 	g.lastTry = now
-	d, next, err := g.a.buildDigest(g.store, &t)
+	d, next, err := g.a.buildDigest(ctx, g.store, &t)
 	if errors.Is(err, hub.ErrNoDigestYet) {
 		g.logf("digest skipped: %v", err)
 		g.sent = t.slot

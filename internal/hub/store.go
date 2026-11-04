@@ -33,9 +33,10 @@ type summary struct {
 	GeneratedAt time.Time    `json:"generated_at"`
 	Vitals      []check.Fact `json:"vitals"`
 	Sections    []struct {
-		Name   string        `json:"name"`
-		Rows   []check.Row   `json:"rows"`
-		Alerts []check.Alert `json:"alerts"`
+		Name   string         `json:"name"`
+		Rows   []check.Row    `json:"rows"`
+		Alerts []check.Alert  `json:"alerts"`
+		Pods   []check.PodRef `json:"pods"`
 	} `json:"sections"`
 }
 
@@ -83,7 +84,8 @@ type Entry struct {
 	RelayErr     string
 	Vitals       []check.Fact
 	Alerts       []check.Alert // worst first
-	Err          error         // the file could not be read
+	Pods         []check.PodRef
+	Err          error // the file could not be read
 }
 
 // List reads every host's file, sorted by host name. A missing store
@@ -115,6 +117,7 @@ func (s Store) List() ([]Entry, error) {
 		e.ReceivedAt, e.Generated, e.Overall, e.Version, e.Vitals, e.Err = st.ReceivedAt, sum.GeneratedAt, sum.Overall, sum.Version, sum.Vitals, err
 		for _, sec := range sum.Sections {
 			e.Alerts = append(e.Alerts, sec.Alerts...)
+			e.Pods = append(e.Pods, sec.Pods...)
 			if sec.Name != RelaySection {
 				continue
 			}

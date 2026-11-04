@@ -106,26 +106,32 @@ func ParseCount(out string) int {
 // case insensitive) and the last few of them. With journalctl the journal is
 // searched and sources are ignored; without it, each source that exists is
 // grepped for today's date. Counts are capped at MaxLines per source.
+func Today(ctx context.Context, r runner.Runner, now time.Time, sources []string, pattern string) (int, []string) {
+	lines := All(ctx, r, now, sources, pattern)
+	return len(lines), lines[max(0, len(lines)-Samples):]
+}
+
+// All is every line Today counts, oldest first, for a check that reads
+// them all rather than a few samples.
 //
 // A pipeline rather than journalctl -g: RHEL 7's journalctl has no -g, and
 // streaming through grep keeps a noisy day's volume out of memory.
-func Today(ctx context.Context, r runner.Runner, now time.Time, sources []string, pattern string) (int, []string) {
+func All(ctx context.Context, r runner.Runner, now time.Time, sources []string, pattern string) []string {
 	ctx, cancel := runner.WithTimeout(ctx, todayTimeout)
 	defer cancel()
 	tail := " | grep -iE " + Quote(pattern) + " | tail -" + strconv.Itoa(MaxLines)
 	var lines []string
 	if _, ok := r.LookPath("journalctl"); ok {
-		lines = nonBlank(r.Shell(ctx, journal(now)+tail).Stdout)
-	} else {
-		for _, src := range sources {
-			if !r.Exists(src) {
-				continue
-			}
-			out := r.Shell(ctx, "grep -E "+Quote(TodayRE(now))+" "+Quote(src)+" 2>/dev/null"+tail).Stdout
-			lines = append(lines, nonBlank(out)...)
-		}
+		return nonBlank(r.Shell(ctx, journal(now)+tail).Stdout)
 	}
-	return len(lines), lines[max(0, len(lines)-Samples):]
+	for _, src := range sources {
+		if !r.Exists(src) {
+			continue
+		}
+		out := r.Shell(ctx, "grep -E "+Quote(TodayRE(now))+" "+Quote(src)+" 2>/dev/null"+tail).Stdout
+		lines = append(lines, nonBlank(out)...)
+	}
+	return lines
 }
 
 func nonBlank(out string) []string {

@@ -57,7 +57,7 @@ const (
 // is.
 func builtin(sshMin int) []Pattern {
 	return []Pattern{
-		{"OOM Killer", `oom.kill|Out of memory`, system, check.Caution, 1},
+		{oomLabel, oomPattern, system, check.Caution, 1},
 		{"Disk I/O Errors", `I/O error|blk_update_request`, system, check.Caution, 1},
 		{"Kernel Panic", `kernel panic`, system, check.Unhealthy, 1},
 		{"Segmentation Faults", `segfault|SIGSEGV`, system, check.Caution, 10},
@@ -129,7 +129,17 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 			continue
 		}
 		scanned = true
-		count, samples := logscan.Today(ctx, r, now, sources[src], p.Pattern)
+		lines := logscan.All(ctx, r, now, sources[src], p.Pattern)
+		if p.Label == oomLabel {
+			// Kills when the kernel's wording is known; the line count of
+			// any other wording, so the check never goes quiet.
+			lines = todaysOOM(lines, now)
+			if kills := parseKills(lines, now); len(kills) > 0 || len(lines) == 0 {
+				oomRows(ctx, s, env, p, kills)
+				continue
+			}
+		}
+		count, samples := len(lines), lines[max(0, len(lines)-logscan.Samples):]
 
 		severe := p.Severity >= check.Caution && p.MinCount > 0
 		escalate := severe && count >= p.MinCount

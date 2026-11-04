@@ -1,6 +1,10 @@
 package check
 
-import "github.com/thyarles/lhc/internal/host"
+import (
+	"time"
+
+	"github.com/thyarles/lhc/internal/host"
+)
 
 // Row is one line of a section.
 type Row struct {
@@ -78,6 +82,9 @@ type Section struct {
 	Rows         []Row   `json:"rows"`
 	Alerts       []Alert `json:"alerts,omitempty"`
 	MissingTools []Tool  `json:"missing_tools,omitempty"`
+	// Pods are Kubernetes pods the check found something about, for a hub
+	// collector to look up in the cluster API.
+	Pods []PodRef `json:"pods,omitempty"`
 	// Facts feed the vital signs strip. The report lists them once, at the
 	// top, so they are not repeated inside the section's JSON.
 	Facts []Fact `json:"-"`
@@ -91,6 +98,19 @@ type Fact struct {
 	Key    string `json:"key"`
 	Value  string `json:"value"`
 	Status Status `json:"status"`
+}
+
+// PodRef is a pod a check names, by the UID the kernel or the runtime saw.
+// Namespace and name are empty when the host could not resolve the UID.
+type PodRef struct {
+	UID       string    `json:"uid"`
+	Namespace string    `json:"namespace,omitempty"`
+	Name      string    `json:"name,omitempty"`
+	Container string    `json:"container,omitempty"`
+	Process   string    `json:"process,omitempty"`
+	Reason    string    `json:"reason"` // oom_killed
+	Count     int       `json:"count"`
+	Last      time.Time `json:"last,omitzero"`
 }
 
 // NewSection starts an applicable, OK section.

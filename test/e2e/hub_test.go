@@ -501,3 +501,86 @@ func TestAHostThatIsNotACollectorNeverChecksTheRelay(t *testing.T) {
 		t.Fatalf("more than the run's own mail: %s", v)
 	}
 }
+
+// oomWorker is a host whose kernel log holds one container-limit OOM kill
+// today; it has no crictl, so it can only send the pod's UID.
+func oomWorker(t *testing.T, key, collector string) *host {
+	t.Helper()
+	h := hubHost(t, "w1.example.com", key, collector)
+	day := time.Now().Format("Jan 02")
+	slice := "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod1a2b3c4d_5e6f_7a8b_9c0d_1e2f3a4b5c6d.slice/cri-containerd-4f1d0c3b9a8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a392817060000.scope"
+	journal := strings.Join([]string{
+		day + " 00:01:40 w1 kernel: java invoked oom-killer: gfp_mask=0x6000c0(GFP_KERNEL), nodemask=(null), order=0, oom_score_adj=985",
+		day + " 00:01:40 w1 kernel: oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=x,mems_allowed=0,oom_memcg=" + slice + ",task_memcg=" + slice + ",task=java,pid=12345,uid=1000",
+		day + " 00:01:40 w1 kernel: Memory cgroup out of memory: Killed process 12345 (java) total-vm:8123456kB, anon-rss:524000kB",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(h.dir, "bin", "journalctl"), []byte("#!/bin/sh\ncat <<'EOF'\n"+journal+"\nEOF\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h.run(0, "config", "set", "checks.logs.enabled=true")
+	return h
+}
+
+// kubectlOn gives a collector a fake kubectl that logs its arguments and
+// a kubeconfig named by checks.kubernetes.kubeconfig.
+func kubectlOn(t *testing.T, c *host) (calls string) {
+	t.Helper()
+	calls = filepath.Join(c.dir, "kubectl.calls")
+	pods := `{"items":[{"metadata":{"namespace":"team-a","name":"api-6b7c9d-x2k4p","uid":"1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d","ownerReferences":[{"kind":"ReplicaSet","name":"api-6b7c9d"}]},"spec":{"containers":[{"name":"app","resources":{"limits":{"memory":"512Mi"}}}]},"status":{}}]}`
+	script := "#!/bin/sh\necho \"$@\" >> " + calls + "\ncat <<'EOF'\n" + pods + "\nEOF\n"
+	if err := os.WriteFile(filepath.Join(c.dir, "bin", "kubectl"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	kc := filepath.Join(c.dir, "kubeconfig.yaml")
+	if err := os.WriteFile(kc, []byte("apiVersion: v1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c.run(0, "config", "set", "checks.kubernetes.kubeconfig="+kc)
+	return calls
+}
+
+func TestTheDigestNamesTheOOMKilledPodWithItsLimit(t *testing.T) {
+	c := newHost(t, relay(t))
+	key := keygen(t, c)
+	col := startCollector(t, c, key)
+	calls := kubectlOn(t, c)
+	w := oomWorker(t, key, col.url)
+	w.run(0, "run")
+	b, _ := json.Marshal(col.stored(t, "w1.example.com"))
+	if r := string(b); !strings.Contains(r, "OOM Killer: 1 kill(s) today") || !strings.Contains(r, `"reason":"oom_killed","uid":"1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"`) {
+		t.Fatalf("stored report:\n%s", r)
+	}
+
+	c.run(0, "hub", "status")
+	if !strings.Contains(c.stdout, "Kubernetes lookup: on (kubeconfig "+filepath.Join(c.dir, "kubeconfig.yaml")+")") {
+		t.Fatalf("hub status:\n%s", c.stdout)
+	}
+	c.run(0, "hub", "digest", "--dry-run")
+	flat := strings.Join(strings.Fields(c.stdout), " ")
+	if !strings.Contains(flat, "OOM team-a/api-6b7c9d-x2k4p · container app · 1 kill · limit 512Mi · Deployment team-a/api") {
+		t.Fatalf("digest:\n%s", c.stdout)
+	}
+	// One call, and only ever a get.
+	got := strings.TrimSpace(readFile(t, calls))
+	if want := "--kubeconfig " + filepath.Join(c.dir, "kubeconfig.yaml") + " --request-timeout=15s get pods --all-namespaces -o json"; got != want {
+		t.Fatalf("kubectl ran %q, want %q", got, want)
+	}
+
+	// Turned off: no kubectl at all, the lines say what the host sent.
+	c.run(0, "config", "set", "collector.kubernetes_lookup=false")
+	if err := os.Remove(calls); err != nil {
+		t.Fatal(err)
+	}
+	c.run(0, "hub", "digest", "--dry-run")
+	flat = strings.Join(strings.Fields(c.stdout), " ")
+	if !strings.Contains(flat, "OOM pod UID 1a2b3c4d-… · java · 1 kill · container limit") {
+		t.Fatalf("digest without the lookup:\n%s", c.stdout)
+	}
+	if _, err := os.Stat(calls); !os.IsNotExist(err) {
+		t.Fatalf("kubectl ran with the lookup off: %s", readFile(t, calls))
+	}
+	c.run(0, "hub", "status")
+	if !strings.Contains(c.stdout, "Kubernetes lookup: off (collector.kubernetes_lookup: false)") {
+		t.Fatalf("hub status:\n%s", c.stdout)
+	}
+}

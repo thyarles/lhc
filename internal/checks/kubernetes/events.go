@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/kube"
 )
 
 // Warning events that describe the NODE running out of something. Everything
@@ -38,10 +39,10 @@ func joinCounts(rs []reasonCount, sep string) string {
 	return strings.Join(parts, sep)
 }
 
-func eventRows(ctx context.Context, s *check.Section, env *check.Env, k kube) {
+func eventRows(ctx context.Context, s *check.Section, env *check.Env, k kube.Cluster) {
 	// `kubectl get events`, not `kubectl events`: the latter only reached GA
 	// in 1.26 and reports a different API with different columns.
-	res := k.run(ctx, "get", "events", "--all-namespaces", "--field-selector", "type=Warning",
+	res := k.Get(ctx, "events", "--all-namespaces", "--field-selector", "type=Warning",
 		"--no-headers", "-o", eventColumns)
 	out := combined(res)
 	if !res.OK() || out == "" || strings.Contains(strings.ToLower(out), "no resources found") {
