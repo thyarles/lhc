@@ -72,6 +72,9 @@ type DigestOptions struct {
 	// when it was not asked. LookupErr is why asking failed.
 	Cluster   map[string]kube.Pod
 	LookupErr string
+	// Owners are the workloads past collector.owner_notify_min_kills, for
+	// the "told …" or "no owner named" on their pods' lines.
+	Owners []Workload
 }
 
 // BuildDigest classifies every host and returns the digest, plus the state
@@ -82,6 +85,7 @@ func BuildDigest(entries []Entry, prev DigestState, o DigestOptions) (*report.Di
 		Total: len(entries), LookupErr: o.LookupErr,
 	}
 	next := DigestState{Hosts: map[string]string{}}
+	notes := ownerNotes(o.Owners)
 	last := map[string]time.Time{}
 	for _, e := range entries {
 		last[e.Host] = e.ReceivedAt
@@ -119,7 +123,7 @@ func BuildDigest(entries []Entry, prev DigestState, o DigestOptions) (*report.Di
 			}
 			h.Alerts = append(h.Alerts, a.Msg)
 		}
-		h.Details = oomLines(e.Pods, o.Cluster)
+		h.Details = oomLines(e.Host, e.Pods, o.Cluster, notes)
 		d.NotOK = append(d.NotOK, h)
 	}
 	slices.SortStableFunc(d.NotOK, func(a, b report.DigestHost) int { return int(b.Status) - int(a.Status) })

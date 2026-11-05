@@ -16,7 +16,9 @@ import (
 // when the cluster could be asked (cluster non-nil).
 //
 //	OOM team-a/api-6b7c9d-x2k4p · container app · 3 kills · limit 512Mi · Deployment team-a/api
-func oomLines(refs []check.PodRef, cluster map[string]kube.Pod) []string {
+//
+// notes, keyed by noteKey, adds what the owner mail did for the pod.
+func oomLines(host string, refs []check.PodRef, cluster map[string]kube.Pod, notes map[string]string) []string {
 	refs = slices.DeleteFunc(slices.Clone(refs), func(r check.PodRef) bool { return r.Reason != "oom_killed" })
 	slices.SortStableFunc(refs, func(a, b check.PodRef) int { return cmp.Compare(b.Count, a.Count) })
 	byName := map[string]string{}
@@ -29,7 +31,11 @@ func oomLines(refs []check.PodRef, cluster map[string]kube.Pod) []string {
 			out = append(out, fmt.Sprintf("(+%d more OOM-killed pods)", len(refs)-i))
 			break
 		}
-		out = append(out, oomLine(r, cluster, byName))
+		line := oomLine(r, cluster, byName)
+		if n := notes[noteKey(host, r)]; n != "" {
+			line += " · " + n
+		}
+		out = append(out, line)
 	}
 	return out
 }
@@ -61,11 +67,7 @@ func oomLine(r check.PodRef, cluster map[string]kube.Pod, byName map[string]stri
 	if cluster == nil && r.Process != "" {
 		parts = append(parts, r.Process)
 	}
-	kills := fmt.Sprintf("%d kills", r.Count)
-	if r.Count == 1 {
-		kills = "1 kill"
-	}
-	parts = append(parts, kills)
+	parts = append(parts, killCount(r.Count))
 	switch {
 	case cluster == nil:
 		parts = append(parts, "container limit")

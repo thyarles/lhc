@@ -97,6 +97,12 @@ func TestValidation(t *testing.T) {
 		"collector:\n  digest_mode: all\n",
 		"collector:\n  takeover_after: 2m\n",
 		"collector:\n  takeover_after: 3h\n",
+		"collector:\n  owner_notify_min_kills: -1\n",
+		"collector:\n  owner_notify_remind: 12h\n",
+		"collector:\n  owner_notify_annotation: \"\"\n",
+		"collector:\n  owner_notify_annotation: lhc/\n",
+		"collector:\n  owner_notify_annotation: \"lhc/no tify\"\n",
+		"collector:\n  owner_notify_annotation: Example.com/notify\n",
 	} {
 		c, err := config.Parse([]byte(bad))
 		if err == nil {
@@ -104,6 +110,23 @@ func TestValidation(t *testing.T) {
 		}
 		if err == nil {
 			t.Errorf("accepted %q", bad)
+		}
+	}
+}
+
+func TestOwnerMailAcceptsOffAndAnyAnnotationKey(t *testing.T) {
+	for _, ok := range []string{
+		"collector:\n  owner_notify_min_kills: 0\n",
+		"collector:\n  owner_notify_remind: 1d\n",
+		"collector:\n  owner_notify_annotation: team.example.com/oom-contacts\n",
+		"collector:\n  owner_notify_annotation: owner\n",
+	} {
+		c, err := config.Parse([]byte(ok))
+		if err == nil {
+			err = c.Validate()
+		}
+		if err != nil {
+			t.Errorf("%q: %v", ok, err)
 		}
 	}
 }

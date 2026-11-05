@@ -8,18 +8,20 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"mime/quotedprintable"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/mail"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/thyarles/lhc/internal/notify/smtp/smtptest"
 )
 
 // syncBuffer is a log the test reads while the collector still writes it.
@@ -71,7 +73,7 @@ func startCollector(t *testing.T, h *host, key string) *collector {
 	addr := freeAddr(t)
 	h.run(0, "config", "set", "collector.enabled=true", "collector.listen="+addr, "hub.key_file="+key)
 	c := &collector{host: h, url: "http://" + addr, log: &syncBuffer{}}
-	cmd := exec.Command(binary, "collect", "--config", h.cfg)
+	cmd, _, _ := h.command("collect")
 	cmd.Stdout, cmd.Stderr = c.log, c.log
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -535,7 +537,13 @@ func kubectlOn(t *testing.T, c *host) (calls string) {
 	t.Helper()
 	calls = filepath.Join(c.dir, "kubectl.calls")
 	pods := `{"items":[{"metadata":{"namespace":"team-a","name":"api-6b7c9d-x2k4p","uid":"1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d","ownerReferences":[{"kind":"ReplicaSet","name":"api-6b7c9d"}]},"spec":{"containers":[{"name":"app","resources":{"limits":{"memory":"512Mi"}}}]},"status":{}}]}`
-	script := "#!/bin/sh\necho \"$@\" >> " + calls + "\ncat <<'EOF'\n" + pods + "\nEOF\n"
+	// Deployment team-a/api names its owners, for owner mail.
+	workloads := `{"items":[{"kind":"Deployment","metadata":{"namespace":"team-a","name":"api","annotations":{"lhc/notify":"dev.one"}}}]}`
+	script := "#!/bin/sh\necho \"$@\" >> " + calls + "\ncase \"$*\" in\n" +
+		"*' get pods '*) cat <<'EOF'\n" + pods + "\nEOF\n;;\n" +
+		"*' get deployments,statefulsets,daemonsets '*) cat <<'EOF'\n" + workloads + "\nEOF\n;;\n" +
+		"*' get namespaces '*) echo '{\"items\":[]}' ;;\n" +
+		"*) exit 1 ;;\nesac\n"
 	if err := os.WriteFile(filepath.Join(c.dir, "bin", "kubectl"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -611,4 +619,77 @@ func TestEveryOOMKillIsCountedPastTheOldCap(t *testing.T) {
 	if flat := strings.Join(strings.Fields(c.stdout), " "); !strings.Contains(flat, "OOM pod UID 1a2b3c4d-… · java · 55 kills · container limit") {
 		t.Fatalf("digest:\n%s", c.stdout)
 	}
+}
+
+// From a worker's OOM lines to the owners' mail, through the scheduled
+// digest of a real `lhc collect`: its first tick is a minute after it
+// starts, so this test takes about one.
+func TestAnAnnotatedDeploymentsOwnersAreMailedAfterTheDigest(t *testing.T) {
+	r := relay(t)
+	c := newHost(t, r)
+	key := keygen(t, c)
+	calls := kubectlOn(t, c)
+	if s := time.Now().Second(); s >= 50 {
+		time.Sleep(time.Duration(61-s) * time.Second) // the turn must not start before the collector
+	}
+	at := time.Now().Add(time.Minute).Format("15:04")
+	c.run(0, "config", "set", "smtp.from=lhc@example.com", "collector.digest_time="+at)
+	col := startCollector(t, c, key)
+	oomWorker(t, key, col.url, 12).run(0, "run")
+
+	c.run(0, "hub", "status")
+	if !strings.Contains(c.stdout, "Owner mail: to @example.com (from smtp.from)") {
+		t.Fatalf("hub status:\n%s", c.stdout)
+	}
+	c.run(0, "hub", "digest", "--dry-run")
+	if !strings.Contains(c.stdout, "→ dev.one@example.com: [lhc] OOM kills: team-a/api · 12 today (annotation on Deployment team-a/api)") {
+		t.Fatalf("dry run:\n%s", c.stdout)
+	}
+	if len(r.Messages()) != 0 {
+		t.Fatal("the dry run sent mail")
+	}
+
+	var owner, digest *smtptest.Message
+	for deadline := time.Now().Add(100 * time.Second); owner == nil && time.Now().Before(deadline); time.Sleep(time.Second) {
+		for _, m := range r.Messages() {
+			switch strings.Join(m.To, ",") {
+			case "dev.one@example.com":
+				owner = &m
+			case "ops@example.com":
+				digest = &m
+			}
+		}
+	}
+	if owner == nil || digest == nil {
+		t.Fatalf("no owner mail or no digest by %s:\n%s", at, col.log)
+	}
+	if n := len(r.Messages()); n != 2 {
+		t.Fatalf("%d messages:\n%s", n, col.log)
+	}
+	text := decodeQP(owner.Data)
+	for _, want := range []string{"team-a/api had 12 OOM kills today", "team-a/api-6b7c9d-x2k4p · container app · 12 kills · limit 512Mi", "annotation lhc/notify on Deployment"} {
+		if !strings.Contains(strings.Join(strings.Fields(text), " "), want) {
+			t.Fatalf("no %q in the owner mail:\n%s", want, text)
+		}
+	}
+	if flat := strings.Join(strings.Fields(decodeQP(digest.Data)), " "); !strings.Contains(flat, "Deployment team-a/api · told dev.one@example.com") {
+		t.Fatalf("digest:\n%s", flat)
+	}
+	if !strings.Contains(col.log.String(), "owner mail → dev.one@example.com (Deployment team-a/api, 12 kills)") {
+		t.Fatalf("collect log:\n%s", col.log)
+	}
+	for l := range strings.SplitSeq(strings.TrimSpace(readFile(t, calls)), "\n") {
+		if !strings.Contains(l, " --request-timeout=15s get ") {
+			t.Fatalf("kubectl ran %q", l)
+		}
+	}
+}
+
+// decodeQP is a message as its reader sees it: soft line breaks joined.
+func decodeQP(data string) string {
+	b, err := io.ReadAll(quotedprintable.NewReader(strings.NewReader(data)))
+	if err != nil {
+		return data
+	}
+	return string(b)
 }

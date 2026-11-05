@@ -27,7 +27,7 @@
   !  worker01.example.com           CAUTION
        - OOM Killer: 5 kill(s) today
          OOM team-a/api-6b7c9d-x2k4p · container app · 3 kills · limit 512Mi
-           · Deployment team-a/api
+           · Deployment team-a/api · told dev.one@example.com
          OOM pod UID 9f8e7d6c-… · 2 kills · pod no longer exists
 
   NEW HOSTS since the last digest

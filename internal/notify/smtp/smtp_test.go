@@ -5,6 +5,7 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
+	"mime/quotedprintable"
 	"net/mail"
 	"strings"
 	"testing"
@@ -318,5 +319,26 @@ func TestProbeRetriesABusyRelayOnce(t *testing.T) {
 	snd2.Retry = 10 * time.Millisecond
 	if err := snd2.Probe(context.Background()); err == nil || !Temporary(err) {
 		t.Fatalf("want the second 421 back, got %v", err)
+	}
+}
+
+func TestATextOnlyMessageHasNoHTMLPart(t *testing.T) {
+	m := msg("inline")
+	m.HTML = ""
+	m.Text = "café · " + strings.Repeat("long line ", 20) + "\n"
+	raw, err := Build(m, when)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := mail.ReadMessage(strings.NewReader(string(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ct := parsed.Header.Get("Content-Type"); ct != "text/plain; charset=utf-8" {
+		t.Fatalf("content type %q", ct)
+	}
+	body, _ := io.ReadAll(quotedprintable.NewReader(parsed.Body))
+	if strings.ReplaceAll(string(body), "\r\n", "\n") != m.Text {
+		t.Fatalf("body %q", body)
 	}
 }
