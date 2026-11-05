@@ -135,6 +135,13 @@ type Collector struct {
 	// Look OOM-killed pods up in the cluster API (kubectl get only) when
 	// this host has kubectl and a kubeconfig.
 	KubernetesLookup bool `yaml:"kubernetes_lookup"`
+	// Kills of one workload across the hub, today, before the people its
+	// annotation names are mailed; 0 = never.
+	OwnerNotifyMinKills int `yaml:"owner_notify_min_kills"`
+	// How long before a workload still being killed is mailed again.
+	OwnerNotifyRemind Duration `yaml:"owner_notify_remind"`
+	// The annotation, on the workload, its pods or its namespace.
+	OwnerNotifyAnnotation string `yaml:"owner_notify_annotation"`
 }
 
 // Default is the configuration a host runs with when its file says nothing.
@@ -156,6 +163,7 @@ func Default() *Config {
 			Listen: ":8461", MaxReportSize: 1 << 20,
 			DigestTime: "09:00", DigestRecipients: []string{}, SilentAfter: Duration(26 * time.Hour), Peers: []string{},
 			DigestMode: "one", TakeoverAfter: Duration(15 * time.Minute), KubernetesLookup: true,
+			OwnerNotifyMinKills: 10, OwnerNotifyRemind: Duration(7 * 24 * time.Hour), OwnerNotifyAnnotation: "lhc/notify",
 		},
 		Checks: map[string]check.Config{},
 	}
@@ -284,6 +292,10 @@ func ParseTime(v string) (h, m int, err error) {
 	return h, m, err
 }
 
+// annotationKey is a Kubernetes annotation key: an optional DNS prefix and
+// a slash, then a name of letters, digits and inner -_. (63 at most).
+var annotationKey = regexp.MustCompile(`^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$`)
+
 // Validate checks the values the schema cannot express.
 func (c *Config) Validate() error {
 	var errs []error
@@ -375,6 +387,15 @@ func (c *Config) Validate() error {
 		if !validHost(p) {
 			bad("collector.peers: %q is not a host name", p)
 		}
+	}
+	if c.Collector.OwnerNotifyMinKills < 0 {
+		bad("collector.owner_notify_min_kills: %d is negative; 0 turns owner mail off", c.Collector.OwnerNotifyMinKills)
+	}
+	if d := c.Collector.OwnerNotifyRemind.D(); d < 24*time.Hour {
+		bad("collector.owner_notify_remind: %s is under 1d; the digest goes out once a day", c.Collector.OwnerNotifyRemind)
+	}
+	if !annotationKey.MatchString(c.Collector.OwnerNotifyAnnotation) || len(c.Collector.OwnerNotifyAnnotation) > 253+1+63 {
+		bad("collector.owner_notify_annotation: %q is not an annotation key such as lhc/notify", c.Collector.OwnerNotifyAnnotation)
 	}
 	for name, cc := range c.Checks {
 		if v, ok := cc.(interface{ Validate() error }); ok {

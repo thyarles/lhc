@@ -30,15 +30,16 @@ from the reports it holds, and mail it now, or print it with --dry-run.
 
 A digest sent by hand does not count as the day's digest: the scheduled
 one still goes out, and still compares with the previous scheduled one.
-It is sent whatever collector.digest_mode says, and tells no other
-collector; --dry-run also prints this collector's turn and today's notice.`,
+It is sent whatever collector.digest_mode says, tells no other collector
+and mails no workload owner; --dry-run also prints this collector's turn,
+today's notice, and the owner mails the scheduled digest would send.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := a.load(); err != nil {
 				return err
 			}
 			store := a.hubStore()
-			d, _, err := a.buildDigest(cmd.Context(), store, nil)
+			d, _, owners, err := a.buildDigest(cmd.Context(), store, nil)
 			if err != nil {
 				return err
 			}
@@ -46,8 +47,13 @@ collector; --dry-run also prints this collector's turn and today's notice.`,
 				for _, l := range a.turnLines(store) {
 					a.printf("%s", l)
 				}
-				_, err := a.stdout.Write([]byte(report.DigestText(d)))
-				return err
+				if _, err := a.stdout.Write([]byte(report.DigestText(d))); err != nil {
+					return err
+				}
+				for _, l := range a.ownerPlanLines(store, owners) {
+					a.printf("%s", l)
+				}
+				return nil
 			}
 			to, err := a.mailDigest(cmd.Context(), d)
 			if err != nil {
@@ -63,15 +69,16 @@ collector; --dry-run also prints this collector's turn and today's notice.`,
 
 func (a *app) hubStore() hub.Store { return hub.Store{Dir: filepath.Join(a.paths.State, "hub")} }
 
-// buildDigest summarises the store as this collector sees it now. t is the
-// scheduled turn it is sent for; nil for one sent by hand.
-func (a *app) buildDigest(ctx context.Context, store hub.Store, t *turn) (*report.Digest, hub.DigestState, error) {
+// buildDigest summarises the store as this collector sees it now, with
+// the workloads whose owners are to be mailed. t is the scheduled turn it
+// is sent for; nil for one sent by hand.
+func (a *app) buildDigest(ctx context.Context, store hub.Store, t *turn) (*report.Digest, hub.DigestState, []hub.Workload, error) {
 	entries, err := store.List()
 	if err != nil {
-		return nil, hub.DigestState{}, err
+		return nil, hub.DigestState{}, nil, err
 	}
 	if len(entries) == 0 {
-		return nil, hub.DigestState{}, hub.ErrNoDigestYet
+		return nil, hub.DigestState{}, nil, hub.ErrNoDigestYet
 	}
 	o := hub.DigestOptions{
 		Self:        a.label(),
@@ -84,8 +91,11 @@ func (a *app) buildDigest(ctx context.Context, store hub.Store, t *turn) (*repor
 		o.OnePerHub, o.Order, o.Rank, o.Slot = true, t.order, t.rank, t.slot
 	}
 	o.Cluster, o.LookupErr = a.lookupPods(ctx, entries)
+	if o.LookupErr == "" {
+		o.Owners, o.LookupErr = a.planOwners(ctx, entries, o.Cluster)
+	}
 	d, next := hub.BuildDigest(entries, store.LoadDigest(), o)
-	return d, next, nil
+	return d, next, o.Owners, nil
 }
 
 // cluster is kubectl as the kubernetes check finds it on this host.
@@ -130,6 +140,101 @@ func (a *app) lookupLine() string {
 		return "  Kubernetes lookup: unavailable (no kubeconfig)"
 	}
 	return "  Kubernetes lookup: on (kubeconfig " + c.Kubeconfig + ")"
+}
+
+// mailDomain is the only domain workload owners may be mailed at.
+func (a *app) mailDomain() (domain, source string) {
+	return hub.MailDomain(a.cfg.SMTP.From, a.cfg.SMTP.Host)
+}
+
+// planOwners finds the workloads past collector.owner_notify_min_kills and
+// who their annotation names. The workloads and namespaces are read only
+// when some workload passes the threshold, and never without the pods
+// (the lookup off, unavailable or failed) or a mail domain.
+func (a *app) planOwners(ctx context.Context, entries []hub.Entry, pods map[string]kube.Pod) ([]hub.Workload, string) {
+	c := a.cfg.Collector
+	domain, _ := a.mailDomain()
+	if pods == nil || c.OwnerNotifyMinKills <= 0 || domain == "" {
+		return nil, ""
+	}
+	l := hub.OwnerLookup{
+		Pods: pods, Annotation: c.OwnerNotifyAnnotation, Domain: domain,
+		MinKills: c.OwnerNotifyMinKills, Now: a.now(),
+	}
+	if len(hub.PlanOwners(entries, l)) == 0 {
+		return nil, ""
+	}
+	k := a.cluster()
+	var err error
+	if l.Workloads, err = k.Workloads(ctx, l.Annotation); err != nil {
+		return nil, err.Error()
+	}
+	if l.Namespaces, err = k.Namespaces(ctx, l.Annotation); err != nil {
+		return nil, err.Error()
+	}
+	return hub.PlanOwners(entries, l), ""
+}
+
+// ownerLine is hub status's word on owner mail.
+func (a *app) ownerLine() string {
+	c := a.cfg.Collector
+	domain, source := a.mailDomain()
+	switch {
+	case c.OwnerNotifyMinKills == 0:
+		return "  Owner mail: off (collector.owner_notify_min_kills: 0)"
+	case domain == "":
+		return "  Owner mail: unavailable (no mail domain in smtp.from or smtp.host)"
+	case !c.KubernetesLookup:
+		return "  Owner mail: unavailable (collector.kubernetes_lookup: false)"
+	}
+	return fmt.Sprintf("  Owner mail: to @%s (from %s)", domain, source)
+}
+
+// mailsOwners says whether this collector mails workload owners after its
+// digest: with digest_mode each, only the first collector by name does.
+func (a *app) mailsOwners() bool {
+	if a.cfg.Collector.DigestMode == "one" {
+		return true
+	}
+	_, rank := hub.Order(a.label(), a.cfg.Collector.Peers)
+	return rank == 0
+}
+
+// ownerPlanLines are digest --dry-run's account of the owner mails the
+// scheduled digest would send now.
+func (a *app) ownerPlanLines(store hub.Store, ws []hub.Workload) []string {
+	c := a.cfg.Collector
+	if domain, _ := a.mailDomain(); c.OwnerNotifyMinKills == 0 || domain == "" || !c.KubernetesLookup {
+		return []string{"", a.ownerLine()}
+	}
+	out := []string{"", "Owner mail (none is sent by --dry-run or by hand):"}
+	if !a.mailsOwners() {
+		order, _ := hub.Order(a.label(), c.Peers)
+		out = append(out, "  this collector sends none: with digest_mode each, only "+order[0]+" does")
+	}
+	if len(ws) == 0 {
+		return append(out, fmt.Sprintf("  no workload with %d or more OOM kills today", c.OwnerNotifyMinKills))
+	}
+	st := store.LoadOwners()
+	remind := c.OwnerNotifyRemind.D()
+	now := a.now()
+	for _, w := range ws {
+		subject, _ := hub.OwnerMail(w, hub.OwnerMailInfo{})
+		switch {
+		case len(w.To) == 0:
+			out = append(out, fmt.Sprintf("  · %s: %d kills, no owner named", w.Key, w.Kills))
+		case !st.Due(w.Key, now, remind):
+			out = append(out, fmt.Sprintf("  · %s: %d kills, told %s on %s, again after %s",
+				w.Key, w.Kills, strings.Join(w.To, ", "), st.Mailed[w.Key].In(now.Location()).Format("2006-01-02"),
+				st.Next(w.Key, remind).In(now.Location()).Format("2006-01-02")))
+		default:
+			out = append(out, fmt.Sprintf("  → %s: %s (annotation on %s)", strings.Join(w.To, ", "), subject, w.Source))
+		}
+		for _, s := range w.Skipped {
+			out = append(out, fmt.Sprintf("    ! %s on %s", s, w.Source))
+		}
+	}
+	return out
 }
 
 // turn is this collector's place in the hub's digest rota.
@@ -253,7 +358,7 @@ func (g *digester) tick(ctx context.Context) {
 		return
 	}
 	g.lastTry = now
-	d, next, err := g.a.buildDigest(ctx, g.store, &t)
+	d, next, owners, err := g.a.buildDigest(ctx, g.store, &t)
 	if errors.Is(err, hub.ErrNoDigestYet) {
 		g.logf("digest skipped: %v", err)
 		g.sent = t.slot
@@ -289,6 +394,48 @@ func (g *digester) tick(ctx context.Context) {
 	g.done(t.slot, next)
 	if t.one {
 		g.tell(ctx, t)
+	}
+	if g.a.mailsOwners() {
+		g.mailOwners(ctx, owners)
+	}
+}
+
+// mailOwners sends each workload's owners its mail, when it is due. A
+// refused mail is logged and not recorded, so the next day's digest tries
+// again; the digest itself is already sent and does not depend on these.
+func (g *digester) mailOwners(ctx context.Context, ws []hub.Workload) {
+	a := g.a
+	st := g.store.LoadOwners()
+	now := a.now()
+	remind := a.cfg.Collector.OwnerNotifyRemind.D()
+	changed := st.Forget(now, remind)
+	h := a.hostInfo()
+	info := hub.OwnerMailInfo{Annotation: a.cfg.Collector.OwnerNotifyAnnotation, Remind: remind, Version: version.Version, Now: now}
+	for _, w := range ws {
+		for _, s := range w.Skipped {
+			g.logf("owner mail: %s: %s on %s", w.Key, s, w.Source)
+		}
+		switch {
+		case len(w.To) == 0:
+			g.logf("owner mail: %s: %d kills, no owner named", w.Key, w.Kills)
+			continue
+		case !st.Due(w.Key, now, remind):
+			continue
+		}
+		subject, text := hub.OwnerMail(w, info)
+		err := a.sender(h).Send(ctx, notify.Message{From: a.fromAddress(h), To: w.To, Subject: subject, Text: text})
+		if err != nil {
+			g.logf("owner mail: %s not sent, trying again with the next digest: %v", w.Key, err)
+			continue
+		}
+		g.logf("owner mail → %s (%s, %d kills)", strings.Join(w.To, ", "), w.Key, w.Kills)
+		st.Mailed[w.Key] = now
+		changed = true
+	}
+	if changed {
+		if err := g.store.SaveOwners(st); err != nil {
+			g.logf("owner mail state not saved: %v", err)
+		}
 	}
 }
 

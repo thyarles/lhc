@@ -130,6 +130,23 @@ collector:
   # (/etc/rancher/rke2/rke2.yaml, ...). A collector without kubectl or a
   # kubeconfig skips it; nothing is needed on hosts without Kubernetes.
   kubernetes_lookup: true
+  # Mail a workload's own team when it has too many OOM kills. A workload
+  # (Deployment, StatefulSet, DaemonSet), its pods or its namespace names
+  # them in an annotation, the first one found winning:
+  #   lhc/notify: "name.surname, other.person@example.com"
+  # The only domain mailed is the SMTP one: the domain of smtp.from, or
+  # smtp.host without its first label (relay.example.com: example.com). A
+  # bare name gets it appended; an address in another domain is skipped.
+  # Only the collector that sends the digest mails owners, right after it,
+  # with that workload's pods only. Needs kubernetes_lookup, and adds
+  # `kubectl get deployments,statefulsets,daemonsets` and `get namespaces`
+  # when some workload passes the threshold. Nothing changes until a team
+  # adds the annotation.
+  # Kills of one workload today, summed over the hub's hosts. 0 = off.
+  owner_notify_min_kills: 10
+  # A workload still being killed is mailed again after this long.
+  owner_notify_remind: 7d
+  owner_notify_annotation: lhc/notify
 
 checks:
   system:

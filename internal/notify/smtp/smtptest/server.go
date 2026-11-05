@@ -37,6 +37,7 @@ type Server struct {
 	AuthMechs     string // e.g. "PLAIN LOGIN"; empty = no AUTH offered
 	RejectData    bool   // answer 554 after DATA
 	RejectRcpt    bool   // answer 550 to RCPT
+	RejectRcptTo  string // answer 550 to RCPT for addresses containing this
 	TempFailData  int    // answer 452 after the first N DATA
 	TempFailHello int    // greet the first N connections with 421
 
@@ -193,7 +194,7 @@ func (s *Server) handle(conn net.Conn) {
 			cur.From = addr(line)
 			say("250 ok")
 		case "RCPT":
-			if s.RejectRcpt {
+			if s.RejectRcpt || (s.RejectRcptTo != "" && strings.Contains(addr(line), s.RejectRcptTo)) {
 				say("550 no such user")
 				continue
 			}

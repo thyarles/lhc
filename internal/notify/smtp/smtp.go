@@ -266,6 +266,22 @@ func Build(m notify.Message, now time.Time) ([]byte, error) {
 	h("MIME-Version", "1.0")
 	h("X-Mailer", "lhc")
 
+	if m.HTML == "" {
+		// A plain-text message, such as an owner mail: no empty HTML part
+		// for a client to show instead of the text.
+		h("Content-Type", "text/plain; charset=utf-8")
+		h("Content-Transfer-Encoding", "quoted-printable")
+		buf.WriteString("\r\n")
+		qp := quotedprintable.NewWriter(&buf)
+		if _, err := qp.Write([]byte(m.Text)); err != nil {
+			return nil, err
+		}
+		if err := qp.Close(); err != nil {
+			return nil, err
+		}
+		return buf.Bytes(), nil
+	}
+
 	mode := m.HTMLMode
 	switch mode {
 	case "attachment", "both":

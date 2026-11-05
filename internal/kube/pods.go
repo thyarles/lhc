@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/thyarles/lhc/internal/runner"
 )
 
 // Pod is what the cluster API says about one pod.
@@ -15,6 +17,9 @@ type Pod struct {
 	// Deployment), "StatefulSet team-a/db"; "" for a bare pod.
 	Owner      string
 	Containers map[string]Container
+	// Annotations are the pod's own, copied from its template; the large
+	// kubectl last-applied-configuration is left out.
+	Annotations map[string]string
 }
 
 // Container is one container's memory settings and last termination.
@@ -29,9 +34,10 @@ type Container struct {
 type pods struct {
 	Items []struct {
 		Metadata struct {
-			Namespace       string `json:"namespace"`
-			Name            string `json:"name"`
-			UID             string `json:"uid"`
+			Namespace       string      `json:"namespace"`
+			Name            string      `json:"name"`
+			UID             string      `json:"uid"`
+			Annotations     annotations `json:"annotations"`
 			OwnerReferences []struct {
 				Kind string `json:"kind"`
 				Name string `json:"name"`
@@ -66,15 +72,7 @@ type pods struct {
 func (c Cluster) Pods(ctx context.Context) (map[string]Pod, error) {
 	res := c.Get(ctx, "pods", "--all-namespaces", "-o", "json")
 	if !res.OK() {
-		msg := strings.TrimSpace(res.Stderr + "\n" + res.Stdout)
-		if msg == "" && res.Err != nil {
-			msg = res.Err.Error()
-		}
-		line, _, _ := strings.Cut(msg, "\n")
-		if line == "" {
-			line = "kubectl failed"
-		}
-		return nil, errors.New(line)
+		return nil, failure(res)
 	}
 	var list pods
 	if err := json.Unmarshal([]byte(res.Stdout), &list); err != nil {
@@ -83,7 +81,7 @@ func (c Cluster) Pods(ctx context.Context) (map[string]Pod, error) {
 	out := make(map[string]Pod, len(list.Items))
 	for _, it := range list.Items {
 		m := it.Metadata
-		p := Pod{Namespace: m.Namespace, Name: m.Name, Node: it.Spec.NodeName, Containers: map[string]Container{}}
+		p := Pod{Namespace: m.Namespace, Name: m.Name, Node: it.Spec.NodeName, Containers: map[string]Container{}, Annotations: m.Annotations.strings()}
 		if len(m.OwnerReferences) > 0 {
 			o := m.OwnerReferences[0]
 			kind, name := o.Kind, o.Name
@@ -109,4 +107,47 @@ func (c Cluster) Pods(ctx context.Context) (map[string]Pod, error) {
 		out[m.UID] = p
 	}
 	return out, nil
+}
+
+// failure is the first line of what kubectl said when a call failed.
+func failure(res runner.Result) error {
+	msg := strings.TrimSpace(res.Stderr + "\n" + res.Stdout)
+	if msg == "" && res.Err != nil {
+		msg = res.Err.Error()
+	}
+	line, _, _ := strings.Cut(msg, "\n")
+	if line == "" {
+		line = "kubectl failed"
+	}
+	return errors.New(line)
+}
+
+// lastApplied is the copy of the whole object kubectl apply leaves on it:
+// large, and never what lhc looks for.
+const lastApplied = "kubectl.kubernetes.io/last-applied-configuration"
+
+// annotations holds an object's annotations undecoded, so a large value
+// costs nothing until one is asked for.
+type annotations map[string]json.RawMessage
+
+// get is one annotation's value; "" when it is missing or not a string.
+func (a annotations) get(key string) string {
+	var v string
+	if raw, ok := a[key]; ok && json.Unmarshal(raw, &v) == nil {
+		return v
+	}
+	return ""
+}
+
+// strings decodes every annotation but lastApplied.
+func (a annotations) strings() map[string]string {
+	out := map[string]string{}
+	for k := range a {
+		if k != lastApplied {
+			if v := a.get(k); v != "" {
+				out[k] = v
+			}
+		}
+	}
+	return out
 }

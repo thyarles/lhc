@@ -156,3 +156,67 @@ func TestPodsSaysWhyTheAPIFailed(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+// bigApplied is the copy of the whole object `kubectl apply` leaves in
+// an annotation, often tens of kilobytes.
+var bigApplied = `"kubectl.kubernetes.io/last-applied-configuration":"{\"apiVersion\":\"apps/v1\",\"data\":\"` + strings.Repeat("x", 64<<10) + `\"}"`
+
+var workloadsJSON = `{"apiVersion":"v1","kind":"List","items":[
+{"kind":"Deployment","metadata":{"namespace":"team-a","name":"api","annotations":{` + bigApplied + `,"lhc/notify":"name.surname, other.person"}}},
+{"kind":"StatefulSet","metadata":{"namespace":"team-b","name":"db"}},
+{"kind":"DaemonSet","metadata":{"namespace":"kube-system","name":"agent","annotations":{"lhc/notify":7}}}
+]}`
+
+func TestWorkloadsReadOnlyTheAnnotationAskedFor(t *testing.T) {
+	r, c := ready(t)
+	r.Expect("get deployments,statefulsets,daemonsets --all-namespaces -o json", workloadsJSON)
+	got, err := c.Workloads(context.Background(), "lhc/notify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"Deployment team-a/api":       "name.surname, other.person",
+		"StatefulSet team-b/db":       "",
+		"DaemonSet kube-system/agent": "", // not a string
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %q", got)
+	}
+	for k, v := range want {
+		if g, ok := got[k]; !ok || g != v {
+			t.Fatalf("%s: got %q (%v), want %q", k, g, ok, v)
+		}
+	}
+}
+
+func TestNamespacesAndPodsCarryTheirAnnotations(t *testing.T) {
+	r, c := ready(t)
+	r.Expect("get namespaces -o json", `{"items":[{"kind":"Namespace","metadata":{"name":"team-a","annotations":{"lhc/notify":"lead"}}},{"kind":"Namespace","metadata":{"name":"default"}}]}`)
+	r.Expect("get pods --all-namespaces -o json", `{"items":[{"metadata":{"namespace":"team-a","name":"api-1","uid":"u1","annotations":{`+bigApplied+`,"lhc/notify":"dev.one"}},"spec":{},"status":{}}]}`)
+	ns, err := c.Namespaces(context.Background(), "lhc/notify")
+	if err != nil || ns["team-a"] != "lead" || ns["default"] != "" || len(ns) != 2 {
+		t.Fatalf("namespaces %q, %v", ns, err)
+	}
+	pods, err := c.Pods(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := pods["u1"].Annotations; a["lhc/notify"] != "dev.one" || len(a) != 1 {
+		t.Fatalf("pod annotations %q", a)
+	}
+	if calls := strings.Join(r.Calls(), "\n"); strings.Count(calls, " get ") != 2 {
+		t.Fatalf("calls:\n%s", calls)
+	}
+}
+
+func TestWorkloadsSaysWhyTheAPIFailed(t *testing.T) {
+	r, c := ready(t)
+	r.Expect("get deployments", "").Code(1).Stderr(`Error from server (Forbidden): deployments.apps is forbidden: User "lhc" cannot list resource "deployments"`)
+	if _, err := c.Workloads(context.Background(), "lhc/notify"); err == nil || !strings.Contains(err.Error(), "Forbidden") {
+		t.Fatalf("err %v", err)
+	}
+	r.Expect("get namespaces", "not json")
+	if _, err := c.Namespaces(context.Background(), "lhc/notify"); err == nil || err.Error() != "kubectl get namespaces: unreadable output" {
+		t.Fatalf("err %v", err)
+	}
+}
