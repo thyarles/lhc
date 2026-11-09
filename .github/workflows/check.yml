@@ -64,12 +64,18 @@ jobs:
       - run: go mod tidy -diff
 
   build:
+    # Each architecture builds and runs on its own hardware: the arm64 binary
+    # is not only cross-compiled but started, and makes a full report there.
     name: Build ${{ matrix.arch }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     strategy:
       matrix:
-        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -84,8 +90,11 @@ jobs:
       - name: Statically linked
         run: file lhc | tee /dev/stderr | grep -q 'statically linked'
       - name: Runs
-        if: matrix.arch == 'amd64'
-        run: ./lhc version
+        run: |
+          ./lhc version
+          ./lhc report --config /dev/null --format json > report.json
+          grep -q '"schema": 1' report.json
+          ./lhc report --config /dev/null --format text
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: matrix.arch == 'amd64'
         with:
@@ -120,3 +129,16 @@ jobs:
             grep -q "\"schema\": 1" /tmp/report.json
             /w/lhc report --config /dev/null --format text
           '
+
+  install-arm64:
+    # install.sh on arm64 hardware: it must pick lhc_linux_arm64.tar.gz from
+    # the latest release, verify it and install a binary that runs.
+    name: Install arm64 (latest release)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo bash install.sh --no-schedule
+      - run: file /usr/local/bin/lhc | tee /dev/stderr | grep -q 'ARM aarch64'
+      - run: sudo lhc version
+      - run: sudo lhc report --format text
