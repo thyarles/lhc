@@ -431,8 +431,53 @@ whether the lookup is on, off or unavailable.
 The rke2 kubeconfig (`/etc/rancher/rke2/rke2.yaml`) is cluster-admin. To
 have RBAC enforce the read-only promise as well, point
 `checks.kubernetes.kubeconfig` at a kubeconfig whose role allows only
-`get` and `list` on pods (and what the `kubernetes` check reads: nodes,
-PVCs, events).
+`get` and `list` on pods, deployments, statefulsets, daemonsets and
+namespaces (and what the `kubernetes` check reads: nodes, PVCs, events).
+
+#### Mailing a workload's own team
+
+The people who can fix an OOM-killed workload (raise its limit, run fewer
+workers) are rarely the ones who read the digest. A workload can name them
+in an annotation, and the collector that sends the digest then mails them
+too, with that workload's pods only:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: team-a
+  annotations:
+    lhc/notify: "name.surname, other.person@example.com"
+```
+
+- **Where**: the Deployment, StatefulSet or DaemonSet, then the pod
+  (template), then the namespace, so a team can cover a whole namespace with
+  one annotation. The first one found wins.
+- **When**: once a workload has `collector.owner_notify_min_kills` (10) kills
+  today, summed over every host of the hub. Then again every
+  `collector.owner_notify_remind` (7 days) while it goes on. Removing the
+  annotation stops the mails at once.
+- **Which addresses**: only the SMTP domain is ever mailed, so an annotation
+  cannot send mail anywhere else. The domain is the one in `smtp.from`, or
+  `smtp.host` without its first label (`relay.example.com` gives
+  `example.com`). A bare `name.surname` gets `@example.com` appended;
+  `name.surname@example.com` is used as written. Another domain, a
+  subdomain, a display name or anything with a space is skipped and logged.
+  At most 5 entries are used. With a blank `smtp.from` and an IP address in
+  `smtp.host` there is no domain, and no owner mail.
+
+The digest says on each pod's line `· told name.surname@example.com`, or
+`· no owner named` when the workload passed the threshold and no annotation
+gave an address. `lhc hub digest --dry-run` lists the mails the scheduled
+digest would send; a digest sent by hand sends none. `lhc hub status` says
+where owner mail goes, or why it is off.
+
+Nothing changes until a team adds the annotation. It needs
+`collector.kubernetes_lookup`, and adds `kubectl get
+deployments,statefulsets,daemonsets` and `kubectl get namespaces` to the
+digest, only when some workload passes the threshold. Set
+`collector.owner_notify_min_kills: 0` to turn it off.
 
 ## Files
 
