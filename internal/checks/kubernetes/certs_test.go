@@ -43,8 +43,12 @@ func TestCertificatesFarAwayIsQuiet(t *testing.T) {
 	certs(t, e, 300, 200)
 	s := e.Run(Check{})
 	r := certRow(t, s)
-	if r.Status != check.Info || r.Value != "2 certificates, first expires in 200d (2026-07-24)" {
-		t.Fatalf("got %v %q", r.Status, r.Value)
+	if r.Status != check.Info || r.Value != "first expiry 2026-07-24 (200d), 2 certs" || r.Detail != "client.crt" {
+		t.Fatalf("got %v %q (%q)", r.Status, r.Value, r.Detail)
+	}
+	// One line in the text report, the date included.
+	if len(r.Value) > 42 {
+		t.Fatalf("%d columns: %q", len(r.Value), r.Value)
 	}
 	checktest.NoAlerts(t, s)
 }
@@ -56,8 +60,8 @@ func TestCertificatesInRenewalWindowStayInfo(t *testing.T) {
 	certs(t, e, 108, 300)
 	s := e.Run(Check{})
 	r := certRow(t, s)
-	if r.Status != check.Info || !strings.HasSuffix(r.Value, "first expires in 108d (2026-04-23), renewed on the next rke2 restart") {
-		t.Fatalf("got %v %q", r.Status, r.Value)
+	if r.Status != check.Info || r.Value != "first expiry 2026-04-23 (108d), 2 certs" || r.Detail != "client-admin.crt, renewed on the next rke2-server restart" {
+		t.Fatalf("got %v %q (%q)", r.Status, r.Value, r.Detail)
 	}
 	checktest.NoAlerts(t, s)
 }
@@ -68,7 +72,7 @@ func TestCertificatesCAExpiryIsNotCounted(t *testing.T) {
 	certs(t, e, 300)
 	e.Fake.File(rke2Agent+"server-ca.crt", checktest.CertPEM(t, "ca", in(-3), true))
 	s := e.Run(Check{})
-	if r := certRow(t, s); r.Status != check.Info || !strings.HasPrefix(r.Value, "1 certificates, first expires in 300d") {
+	if r := certRow(t, s); r.Status != check.Info || r.Value != "first expiry 2026-11-01 (300d), 1 cert" {
 		t.Fatalf("got %v %q", r.Status, r.Value)
 	}
 	checktest.NoAlerts(t, s)
@@ -81,7 +85,7 @@ func TestCertificatesCloseRaiseCaution(t *testing.T) {
 		cluster(e, oneNode)
 		certs(t, e, days, 300)
 		s := e.Run(Check{})
-		if r := certRow(t, s); r.Status != check.Caution || r.Detail != "client-admin.crt" {
+		if r := certRow(t, s); r.Status != check.Caution || r.Detail != "client-admin.crt, renewed on the next rke2-server restart" {
 			t.Fatalf("%dd: got %v %q (%q)", days, r.Status, r.Value, r.Detail)
 		}
 		alertCount(t, s, 1)
