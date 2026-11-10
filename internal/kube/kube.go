@@ -149,3 +149,41 @@ func kubeconfigPath(r runner.Runner, explicit string) string {
 	}
 	return ""
 }
+
+// notReadyPath prints one "name<TAB>status" line per node, status being its
+// Ready condition: True, False or Unknown.
+const notReadyPath = `{range .items[*]}{.metadata.name}{"\t"}{range .status.conditions[?(@.type=="Ready")]}{.status}{end}{"\n"}{end}`
+
+// NotReady lists the nodes whose Ready condition is not True. An error is
+// a cluster that could not be asked: the caller treats it as "not sure".
+func (c Cluster) NotReady(ctx context.Context) ([]string, error) {
+	res := c.Get(ctx, "nodes", "-o", "jsonpath="+notReadyPath)
+	if !res.OK() {
+		msg := strings.TrimSpace(res.Stderr)
+		if msg == "" && res.Err != nil {
+			msg = res.Err.Error()
+		}
+		return nil, fmt.Errorf("kubectl get nodes: %s", firstLineOf(msg))
+	}
+	var bad []string
+	n := 0
+	for _, line := range strings.Split(res.Stdout, "\n") {
+		name, status, _ := strings.Cut(strings.TrimSpace(line), "\t")
+		if name == "" {
+			continue
+		}
+		n++
+		if status != "True" {
+			bad = append(bad, name)
+		}
+	}
+	if n == 0 {
+		return nil, errors.New("kubectl get nodes: no nodes listed")
+	}
+	return bad, nil
+}
+
+func firstLineOf(s string) string {
+	l, _, _ := strings.Cut(s, "\n")
+	return l
+}

@@ -79,6 +79,13 @@
 <div class="hc-ink" style="font-size:12px;color:{{T.Ink}};background:{{T.Surface}}">{{join . ", "}}</div>
 {{- end}}
 
+{{- with .CertGroups}}
+{{template "dhead" "Certificate restarts"}}
+<table role="presentation" style="width:100%;border-collapse:collapse">
+{{- range .}}{{template "dhost" (certgroup .)}}{{end}}
+</table>
+{{- end}}
+
 {{template "dhead" "Everyone else"}}
 <div class="hc-ink" style="font-size:12px;color:{{T.Ink}};background:{{T.Surface}}">{{plural .OK "host"}} OK</div>
 {{- with .Totals}}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/thyarles/lhc/internal/check"
+	"github.com/thyarles/lhc/internal/report"
 	"github.com/thyarles/lhc/internal/state"
 )
 
@@ -26,12 +27,13 @@ type Stored struct {
 
 // summary is the part of a report the store reads back.
 type summary struct {
-	Schema      int          `json:"schema"`
-	Host        string       `json:"host"`
-	Overall     string       `json:"overall"`
-	Version     string       `json:"version"`
-	GeneratedAt time.Time    `json:"generated_at"`
-	Vitals      []check.Fact `json:"vitals"`
+	Schema      int                 `json:"schema"`
+	Host        string              `json:"host"`
+	Overall     string              `json:"overall"`
+	Version     string              `json:"version"`
+	GeneratedAt time.Time           `json:"generated_at"`
+	Vitals      []check.Fact        `json:"vitals"`
+	CertRestart *report.CertRestart `json:"cert_restart"`
 	Sections    []struct {
 		Name   string         `json:"name"`
 		Rows   []check.Row    `json:"rows"`
@@ -85,7 +87,10 @@ type Entry struct {
 	Vitals       []check.Fact
 	Alerts       []check.Alert // worst first
 	Pods         []check.PodRef
-	Err          error // the file could not be read
+	// CertRestart is the host's cert_restart group and certificate expiry;
+	// nil when it has no cert_restart.before.
+	CertRestart *report.CertRestart
+	Err         error // the file could not be read
 }
 
 // List reads every host's file, sorted by host name. A missing store
@@ -115,6 +120,7 @@ func (s Store) List() ([]Entry, error) {
 			err = json.Unmarshal(st.Report, &sum)
 		}
 		e.ReceivedAt, e.Generated, e.Overall, e.Version, e.Vitals, e.Err = st.ReceivedAt, sum.GeneratedAt, sum.Overall, sum.Version, sum.Vitals, err
+		e.CertRestart = sum.CertRestart
 		for _, sec := range sum.Sections {
 			e.Alerts = append(e.Alerts, sec.Alerts...)
 			e.Pods = append(e.Pods, sec.Pods...)

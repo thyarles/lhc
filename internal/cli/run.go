@@ -185,6 +185,7 @@ func (a *app) pass(ctx context.Context, o runOpts) error {
 	say("  Alert triage: %s", decision.Summary())
 
 	m := report.Build(res, decision, h.Label, version.Version, now)
+	m.CertRestart = a.certRestartInfo(ctx, states)
 	text := report.Text(m)
 	html, err := report.HTML(m)
 	if err != nil {

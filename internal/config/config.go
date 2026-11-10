@@ -44,6 +44,8 @@ type Config struct {
 	Paths     Paths     `yaml:"paths"`
 	Hub       Hub       `yaml:"hub"`
 	Collector Collector `yaml:"collector"`
+	// CertRestart restarts rke2/k3s before its certificates expire.
+	CertRestart CertRestart `yaml:"cert_restart"`
 	// Checks holds each registered check's decoded config, by name.
 	Checks map[string]check.Config `yaml:"-"`
 }
@@ -144,6 +146,44 @@ type Collector struct {
 	OwnerNotifyAnnotation string `yaml:"owner_notify_annotation"`
 }
 
+// CertRestart configures `lhc cert-restart`: restart rke2/k3s on this node
+// when its certificates get close to expiry, one node of a group a night,
+// as the hub's collectors agree.
+type CertRestart struct {
+	// Restart when the first certificate expires within this; 0 = never.
+	Before Duration `yaml:"before"`
+	// Nodes of one group never restart on the same day. Blank = the host
+	// name without the domain and the trailing digits.
+	Group string `yaml:"group"`
+	// Local time, HH:MM, and length of the nightly window.
+	Time   string   `yaml:"time"`
+	Window Duration `yaml:"window"`
+}
+
+// CertRestartMin and CertRestartMax bound cert_restart.before. rke2 renews
+// only certificates with less than 120 days left (90 on older releases), so
+// a restart earlier than that renews nothing.
+const (
+	CertRestartMin = 7 * 24 * time.Hour
+	CertRestartMax = 89 * 24 * time.Hour
+)
+
+// GroupOf is the group a host is in: cert_restart.group when set, otherwise
+// its name lowercased, without the domain and the trailing digits
+// (k8s-node07.example.com: k8s-node). A name that is all digits keeps them.
+func GroupOf(group, host string) string {
+	if g := strings.ToLower(strings.TrimSpace(group)); g != "" {
+		return g
+	}
+	short, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(host)), ".")
+	if trimmed := strings.TrimRight(short, "0123456789"); trimmed != "" {
+		short = trimmed
+	}
+	return strings.TrimRight(short, "-_")
+}
+
+var groupName = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]*$`)
+
 // Default is the configuration a host runs with when its file says nothing.
 func Default() *Config {
 	c := &Config{
@@ -165,7 +205,8 @@ func Default() *Config {
 			DigestMode: "one", TakeoverAfter: Duration(15 * time.Minute), KubernetesLookup: true,
 			OwnerNotifyMinKills: 10, OwnerNotifyRemind: Duration(7 * 24 * time.Hour), OwnerNotifyAnnotation: "lhc/notify",
 		},
-		Checks: map[string]check.Config{},
+		CertRestart: CertRestart{Time: "03:00", Window: Duration(2 * time.Hour)},
+		Checks:      map[string]check.Config{},
 	}
 	for _, ch := range check.All() {
 		c.Checks[ch.Meta().Name] = ch.Defaults()
@@ -187,16 +228,17 @@ func (c *Config) Check(name string) check.Config {
 // file mirrors Config for decoding, with the checks block kept raw so each
 // block can be decoded into its own check's struct.
 type file struct {
-	Hostname  string               `yaml:"hostname"`
-	SMTP      *SMTP                `yaml:"smtp"`
-	Email     *Email               `yaml:"email"`
-	Alerts    *Alerts              `yaml:"alerts"`
-	Schedule  *Schedule            `yaml:"schedule"`
-	Reports   *Reports             `yaml:"reports"`
-	Paths     *Paths               `yaml:"paths"`
-	Hub       *Hub                 `yaml:"hub"`
-	Collector *Collector           `yaml:"collector"`
-	Checks    map[string]yaml.Node `yaml:"checks"`
+	Hostname    string               `yaml:"hostname"`
+	SMTP        *SMTP                `yaml:"smtp"`
+	Email       *Email               `yaml:"email"`
+	Alerts      *Alerts              `yaml:"alerts"`
+	Schedule    *Schedule            `yaml:"schedule"`
+	Reports     *Reports             `yaml:"reports"`
+	Paths       *Paths               `yaml:"paths"`
+	Hub         *Hub                 `yaml:"hub"`
+	Collector   *Collector           `yaml:"collector"`
+	CertRestart *CertRestart         `yaml:"cert_restart"`
+	Checks      map[string]yaml.Node `yaml:"checks"`
 }
 
 // Parse decodes YAML on top of the defaults. Unknown keys are errors, so a
@@ -206,7 +248,7 @@ func Parse(b []byte) (*Config, error) {
 	f := file{
 		Hostname: c.Hostname, SMTP: &c.SMTP, Email: &c.Email, Alerts: &c.Alerts,
 		Schedule: &c.Schedule, Reports: &c.Reports, Paths: &c.Paths,
-		Hub: &c.Hub, Collector: &c.Collector,
+		Hub: &c.Hub, Collector: &c.Collector, CertRestart: &c.CertRestart,
 	}
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 	dec.KnownFields(true)
@@ -397,6 +439,23 @@ func (c *Config) Validate() error {
 	if !annotationKey.MatchString(c.Collector.OwnerNotifyAnnotation) || len(c.Collector.OwnerNotifyAnnotation) > 253+1+63 {
 		bad("collector.owner_notify_annotation: %q is not an annotation key such as lhc/notify", c.Collector.OwnerNotifyAnnotation)
 	}
+	if b := c.CertRestart.Before.D(); b != 0 {
+		if b < CertRestartMin || b > CertRestartMax {
+			bad("cert_restart.before: %s is not 0 or between 7d and 89d (rke2 renews only certificates with less than 120 days left, 90 on older releases)", c.CertRestart.Before)
+		}
+		if len(c.Hub.Collectors) == 0 {
+			bad("cert_restart.before: needs hub.collectors; the collectors decide which node restarts on which night")
+		}
+	}
+	if g := c.CertRestart.Group; g != "" && !groupName.MatchString(strings.ToLower(g)) {
+		bad("cert_restart.group: %q is not a group name (letters, digits, '.', '-')", g)
+	}
+	if _, _, err := ParseTime(c.CertRestart.Time); err != nil {
+		bad("cert_restart.time: %v", err)
+	}
+	if w := c.CertRestart.Window.D(); w < 10*time.Minute || w > 6*time.Hour {
+		bad("cert_restart.window: %s is not between 10m and 6h", c.CertRestart.Window)
+	}
 	for name, cc := range c.Checks {
 		if v, ok := cc.(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
@@ -443,21 +502,22 @@ func documentation(ip netip.Addr) bool {
 // Marshal renders the effective config, checks included, as YAML.
 func (c *Config) Marshal() ([]byte, error) {
 	type out struct {
-		Hostname  string                  `yaml:"hostname"`
-		SMTP      SMTP                    `yaml:"smtp"`
-		Email     Email                   `yaml:"email"`
-		Alerts    Alerts                  `yaml:"alerts"`
-		Schedule  Schedule                `yaml:"schedule"`
-		Reports   Reports                 `yaml:"reports"`
-		Paths     Paths                   `yaml:"paths"`
-		Hub       Hub                     `yaml:"hub"`
-		Collector Collector               `yaml:"collector"`
-		Checks    map[string]check.Config `yaml:"checks"`
+		Hostname    string                  `yaml:"hostname"`
+		SMTP        SMTP                    `yaml:"smtp"`
+		Email       Email                   `yaml:"email"`
+		Alerts      Alerts                  `yaml:"alerts"`
+		Schedule    Schedule                `yaml:"schedule"`
+		Reports     Reports                 `yaml:"reports"`
+		Paths       Paths                   `yaml:"paths"`
+		Hub         Hub                     `yaml:"hub"`
+		Collector   Collector               `yaml:"collector"`
+		CertRestart CertRestart             `yaml:"cert_restart"`
+		Checks      map[string]check.Config `yaml:"checks"`
 	}
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
-	err := enc.Encode(out{c.Hostname, c.SMTP, c.Email, c.Alerts, c.Schedule, c.Reports, c.Paths, c.Hub, c.Collector, c.Checks})
+	err := enc.Encode(out{c.Hostname, c.SMTP, c.Email, c.Alerts, c.Schedule, c.Reports, c.Paths, c.Hub, c.Collector, c.CertRestart, c.Checks})
 	return buf.Bytes(), err
 }
 

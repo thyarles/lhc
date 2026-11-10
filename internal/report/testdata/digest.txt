@@ -33,6 +33,15 @@
   NEW HOSTS since the last digest
      web02.example.com
 
+  CERTIFICATE RESTARTS
+  ·  k8s-node                       3 hosts, restart at 30d
+       ✓ k8s-node02 restarted rke2-server at 03:41, renewed (first expires
+         in 364d)
+       · due: k8s-node03 (expires in 29d)
+  ✕  k8s-worker                     2 hosts, restart at 30d
+       ✕ k8s-worker01 restarted at 03:12, no report since
+  ✓  rancher                        3 hosts, restart at 21d · nothing due
+
   EVERYONE ELSE
   36 hosts OK
   uptime 3 hours to 1320 days · 1400 pending updates · 3 hosts waiting for a

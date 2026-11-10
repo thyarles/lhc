@@ -35,6 +35,23 @@ type Model struct {
 	// Vitals is the strip under the host name, in vitalOrder.
 	Vitals []check.Fact
 	Triage *Triage // nil when there was no alert evaluation
+	// CertRestart is set on a host with cert_restart.before, so the
+	// collectors know the members of each group and their expiry.
+	CertRestart *CertRestart
+}
+
+// CertRestart is what a host with cert_restart.before tells its collectors.
+type CertRestart struct {
+	Group      string `json:"group"`
+	BeforeDays int    `json:"before_days"`
+	// FirstExpiry is the soonest leaf certificate; zero when none was read.
+	FirstExpiry time.Time `json:"first_expiry"`
+	// Service is the unit a restart would restart; "" when none is active.
+	Service string `json:"service"`
+	// The last restart lhc cert-restart made, and whether it renewed the
+	// certificates; zero when it never made one.
+	LastRestart time.Time `json:"last_restart,omitzero"`
+	LastRenewed bool      `json:"last_renewed,omitempty"`
 }
 
 // Build assembles the model. d may be nil.

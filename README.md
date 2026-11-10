@@ -163,6 +163,8 @@ lhc hub keygen              # once per hub: the shared key for collectors
 lhc hub status              # on a collector: every host's latest report and its age
 lhc hub forget HOST         # on a collector: drop a decommissioned host
 lhc hub digest [--dry-run]  # on a collector: mail (or print) the daily digest now
+
+lhc cert-restart --dry-run  # on an rke2/k3s node with cert_restart: what tonight would do
 ```
 
 `lhc report` and `lhc run --dry-run` never touch the saved baselines, so a
@@ -275,6 +277,53 @@ has expired. The fix is the one rke2 names: `systemctl restart rke2-server`
 (`rke2-agent` on a worker, `k3s` or `k3s-agent` for k3s), one node at a
 time. `checks.kubernetes.certificates: false` turns the row off.
 
+### Restarting rke2 before its certificates expire
+
+Off by default. On a node of a hub, `cert_restart.before` makes lhc do that
+restart itself, one node of a group a night:
+
+```sh
+lhc config set cert_restart.before=30d
+lhc install            # adds the lhc-cert-restart timer (systemd)
+lhc cert-restart --dry-run
+```
+
+Every night in the window (`cert_restart.time`, 03:00, plus a random part
+of `cert_restart.window`, 2h), `lhc cert-restart --scheduled`:
+
+1. does nothing until the node's first certificate expires within `before`;
+2. does nothing if none of `rke2-server`, `rke2-agent`, `k3s` or `k3s-agent`
+   is active (a stopped service is someone's maintenance);
+3. on a node with a kubeconfig, does nothing unless every node of the
+   cluster is Ready;
+4. asks every collector in `hub.collectors` for its turn, and restarts the
+   service only when a **majority** of them grant it (2 of 3, 2 of 2);
+5. waits up to 10 minutes for the service, and the nodes, to come back,
+   logs whether the certificates were renewed, and runs a normal `lhc run`
+   so the collectors hear about it.
+
+A collector grants a claim only when it has granted no other node of the
+group today or in the last 20 hours, every node it granted before has
+reported since, and no other node of the group is SILENT. Each collector
+grants a group once a day, so two nodes of a group can never both have a
+majority on the same day. With one of three collectors down, restarts still
+happen. With one of two down, nobody restarts until it is back: a restart
+comes late, never twice. A collector running an older lhc counts as a
+refusal.
+
+The group is `cert_restart.group`, or the host name without the domain and
+the trailing digits: `k8s-node07.example.com` is in group `k8s-node`. At most
+one node of a group restarts a night, so a group of 40 needs `before` above
+40 days. `before` is at most 89 days: rke2 renews only certificates with
+less than 120 days left (90 on older releases), so an earlier restart would
+renew nothing. Nothing is drained: pods keep running through a service
+restart, and lhc never writes to the cluster.
+
+The collectors' digest gets a **Certificate restarts** block, one line per
+group: who restarted last night and whether it renewed, which nodes are due,
+and, as UNHEALTHY, a node that was granted a restart and has not reported
+since. The output of each night is in `journalctl -u lhc-cert-restart`.
+
 ## How alerting works
 
 Each finding has a fingerprint: its message with the numbers removed, so
@@ -336,7 +385,10 @@ your collectors' real addresses there. lhc refuses the documentation ranges
   VLAN its own pair of collectors and list only those on its hosts.
 - **One way only.** A collector answers `POST /v1/report` (and, from another
   collector, `POST /v1/digest-sent`) with 204 or an empty 400, and 404 to
-  anything else. It never sends a host anything to act on.
+  anything else. It never sends a host anything to act on, with one
+  exception that is off by default: a node with `cert_restart` asks
+  `POST /v1/claim` for its turn and gets an answer sealed with the hub key
+  (see [Restarting rke2 before its certificates expire](#restarting-rke2-before-its-certificates-expire)).
 - **Encrypted end to end.** Each report is gzipped and sealed with AES-256-GCM
   under the shared key, with the host name and the time bound to it. Plain
   HTTP is therefore enough. Without the key a report can be neither read nor

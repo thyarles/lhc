@@ -19,6 +19,7 @@ type jsonReport struct {
 	Vitals      []check.Fact     `json:"vitals"`
 	Triage      *Triage          `json:"triage"`
 	Sections    []*check.Section `json:"sections"`
+	CertRestart *CertRestart     `json:"cert_restart,omitempty"`
 }
 
 // JSON renders the machine-readable report.
@@ -45,6 +46,7 @@ func JSON(m *Model) ([]byte, error) {
 	b, err := json.MarshalIndent(jsonReport{
 		Schema: SchemaVersion, Version: m.Version, Host: m.Host,
 		GeneratedAt: m.Generated, Overall: m.Overall, Vitals: vitals, Triage: tr, Sections: secs,
+		CertRestart: m.CertRestart,
 	}, "", "  ")
 	if err != nil {
 		return nil, err

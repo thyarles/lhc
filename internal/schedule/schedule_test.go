@@ -327,6 +327,49 @@ func TestTheCollectorServiceInstallsAndUninstalls(t *testing.T) {
 	}
 }
 
+func TestTheCertRestartTimerInstallsAndUninstalls(t *testing.T) {
+	old := UnitDir
+	UnitDir = t.TempDir()
+	t.Cleanup(func() { UnitDir = old })
+	fake := checktest.NewRunner()
+	in := &Installer{Runner: fake, Out: func(string, ...any) {}}
+	job := Job{Binary: "/usr/local/bin/lhc", Config: "/etc/lhc/config.yaml"}
+	cr := config.CertRestart{Before: config.Duration(30 * 24 * time.Hour), Time: "03:00", Window: config.Duration(2 * time.Hour)}
+	if err := in.InstallCertRestart(context.Background(), cr, job); err != nil {
+		t.Fatal(err)
+	}
+	svc, timer := readUnit(t, CertRestartService), readUnit(t, CertRestartTimer)
+	for _, want := range []string{"ExecStart=/usr/local/bin/lhc cert-restart --scheduled --config /etc/lhc/config.yaml", "Type=oneshot", "TimeoutStartSec=45min"} {
+		if !strings.Contains(svc, want) {
+			t.Errorf("service lacks %q:\n%s", want, svc)
+		}
+	}
+	for _, want := range []string{"OnCalendar=*-*-* 03:00:00", "RandomizedDelaySec=7200"} {
+		if !strings.Contains(timer, want) {
+			t.Errorf("timer lacks %q:\n%s", want, timer)
+		}
+	}
+	// A missed night is tried the next night, never at boot.
+	if strings.Contains(timer, "Persistent=true") {
+		t.Error("the cert-restart timer must not catch up at boot")
+	}
+	if calls := strings.Join(fake.Calls(), "\n"); !strings.Contains(calls, "systemctl enable --now "+CertRestartTimer) {
+		t.Fatal(calls)
+	}
+	if err := in.Uninstall(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{CertRestartService, CertRestartTimer} {
+		if _, err := os.Stat(filepath.Join(UnitDir, f)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("%s is still there", f)
+		}
+	}
+	// Removing what is not there is fine.
+	if err := in.RemoveCertRestart(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func readUnit(t *testing.T, name string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(UnitDir, name))

@@ -11,7 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thyarles/lhc/internal/checks/kubernetes"
 	"github.com/thyarles/lhc/internal/config"
 	"github.com/thyarles/lhc/internal/hub"
 	"github.com/thyarles/lhc/internal/kube"
@@ -86,6 +85,7 @@ func (a *app) buildDigest(ctx context.Context, store hub.Store, t *turn) (*repor
 		SilentAfter: a.cfg.Collector.SilentAfter.D(),
 		Version:     version.Version,
 		Now:         a.now(),
+		Grants:      store.LoadGrants(),
 	}
 	if t != nil && t.one {
 		o.OnePerHub, o.Order, o.Rank, o.Slot = true, t.order, t.rank, t.slot
@@ -100,11 +100,7 @@ func (a *app) buildDigest(ctx context.Context, store hub.Store, t *turn) (*repor
 
 // cluster is kubectl as the kubernetes check finds it on this host.
 func (a *app) cluster() kube.Cluster {
-	explicit := ""
-	if c, ok := a.cfg.Check("kubernetes").(*kubernetes.Config); ok {
-		explicit = c.Kubeconfig
-	}
-	return kube.Find(a.runner, explicit)
+	return kube.Find(a.runner, a.kubeconfigSetting())
 }
 
 // lookupPods asks the cluster about every pod, once, when a host reported
