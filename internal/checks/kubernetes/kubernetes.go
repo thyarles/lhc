@@ -53,6 +53,10 @@ type Config struct {
 	EvictedRecentHours float64 `yaml:"evicted_recent_hours"`
 	// Guard rail: stop reading the pod list past this many rows.
 	MaxPods int `yaml:"max_pods"`
+	// Expiry of the rke2/k3s certificates on this node, read from the files.
+	Certificates bool `yaml:"certificates"`
+	// CAUTION when the first certificate expires within this many days.
+	CertificatesCautionDays int `yaml:"certificates_caution_days"`
 }
 
 // Check is the Kubernetes check.
@@ -65,6 +69,7 @@ func (Check) Defaults() check.Config {
 		Toggle: check.On, Scope: "auto",
 		Nodes: true, Pods: true, PVCs: true, Events: true, Images: true,
 		PendingMinutes: 15, RestartDeltaCaution: 3, EvictedRecentHours: 24, MaxPods: 2000,
+		Certificates: true, CertificatesCautionDays: 21,
 	}
 }
 
@@ -90,6 +95,9 @@ func (c *Config) Validate() error {
 	}
 	if c.MaxPods < 1 {
 		return fmt.Errorf("max_pods (%d) must be at least 1", c.MaxPods)
+	}
+	if c.CertificatesCautionDays < 0 {
+		return fmt.Errorf("certificates_caution_days (%d) is negative", c.CertificatesCautionDays)
 	}
 	return nil
 }
@@ -177,6 +185,10 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 	s := check.NewSection("kubernetes", c.Meta().Title)
 	scope := normScope(cfg.Scope)
 
+	// First, and from the files alone: it must show on workers and while
+	// the API is down.
+	certs := cfg.Certificates && certRows(s, env, cfg)
+
 	k := kube.Find(env.Runner, cfg.Kubeconfig)
 	kcfg := k.Kubeconfig
 
@@ -188,6 +200,10 @@ func (c Check) Run(ctx context.Context, env *check.Env) *check.Section {
 		// on a control-plane node. "Not present" read as wrong on a host
 		// running dozens of pods.
 		s.Add("Node Role", "Worker node (no kubeconfig here)", check.Info)
+		return s
+	case !k.HasKubectl() && kcfg == "" && certs:
+		// Installed but stopped: the certificate row still matters.
+		s.Add("Node Role", "rke2/k3s installed, but no kubelet runs and no kubeconfig here", check.Info)
 		return s
 	case !k.HasKubectl() && kcfg == "":
 		s.NotApplicable("Not a Kubernetes node")

@@ -28,7 +28,7 @@ Same checks and the same alert behaviour, with no interpreter to install.
 | processes | top 5 by memory and CPU, zombie pile-ups |
 | services | failed systemd units, units stuck activating across two runs |
 | docker | fresh crashes and restart loops (old stopped containers are not news) |
-| kubernetes | node readiness/pressure/cordons, broken pods, restart growth, lost PVCs, node-level events |
+| kubernetes | node readiness/pressure/cordons, broken pods, restart growth, lost PVCs, node-level events; expiry of the rke2/k3s certificates on the node (see [Kubernetes certificates](#kubernetes-certificates)) |
 | updates | pending (and security) updates: dnf, yum, apt, zypper; **a reboot waiting** for an installed kernel or core library, dated from that update: CAUTION after 14 days, UNHEALTHY after 30 (`reboot_caution_days`, `reboot_unhealthy_days`) |
 | users | logged-in users, root logins **today** |
 | auth | failed SSH attempts today, top sources, sudo use |
@@ -249,6 +249,31 @@ Only today's lines count, like the built-in patterns, so a match from last
 week does not keep the report yellow. Edit the file by hand for this one
 (`lhc config set` cannot write a list of patterns), then run
 `lhc config validate`.
+
+### Kubernetes certificates
+
+rke2 and k3s issue their node certificates for a year and renew every one
+that has less than 120 days left (90 on older releases), but only when the
+service starts. A node that is not restarted for months runs into expiry,
+and recent rke2 releases repeat a `CertificateExpirationWarning` event on
+every node from 120 days on.
+
+The `kubernetes` check reads the certificate files themselves, so it works
+on workers without a kubeconfig and while the API is down: everything under
+`/var/lib/rancher/rke2/server/tls` and the `*.crt` directly in
+`/var/lib/rancher/rke2/agent` (the same under `k3s`). CA certificates are
+skipped: they last ten years and a restart does not renew them.
+
+```
+Certificates   14 certificates, first expires in 108d (2027-02-26), renewed on the next rke2 restart
+```
+
+The row stays INFO through rke2's 120-day warning period. It turns CAUTION, with
+an alert, when the first certificate expires within
+`checks.kubernetes.certificates_caution_days` (21), and UNHEALTHY once one
+has expired. The fix is the one rke2 names: `systemctl restart rke2-server`
+(`rke2-agent` on a worker, `k3s` or `k3s-agent` for k3s), one node at a
+time. `checks.kubernetes.certificates: false` turns the row off.
 
 ## How alerting works
 
