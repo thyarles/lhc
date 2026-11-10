@@ -148,6 +148,28 @@ collector:
   owner_notify_remind: 7d
   owner_notify_annotation: lhc/notify
 
+
+# Restart rke2/k3s on this node before its certificates expire. rke2 and k3s
+# renew their node certificates (valid a year) only when the service starts,
+# and only those with less than 120 days left (90 on older releases). With
+# this set, a systemd timer runs `lhc cert-restart --scheduled` every night;
+# once the first certificate expires within `before`, the node asks every
+# hub collector and restarts rke2-server, rke2-agent, k3s or k3s-agent only
+# when a majority agree. A collector agrees to one node of a group a day,
+# never while another node of the group is SILENT or has not reported since
+# its own restart. Pods keep running; nothing is drained. At most one node
+# per group a night, so choose `before` above the size of the group.
+cert_restart:
+  # 0 = never (the default). Between 7d and 89d; needs hub.collectors.
+  before: 0
+  # Blank = this host's name without the domain and the trailing digits:
+  # k8s-node07.example.com is in group k8s-node.
+  group: ""
+  # Local time, HH:MM, of the nightly window, and its length. Each node
+  # waits a random part of it, so the nodes of a group do not ask at once.
+  time: "03:00"
+  window: 2h
+
 checks:
   system:
     enabled: true

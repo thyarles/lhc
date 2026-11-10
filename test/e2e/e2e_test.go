@@ -66,6 +66,7 @@ type host struct {
 	relay  *smtptest.Server
 	stdout string
 	stderr string
+	env    []string // added to every command's environment
 }
 
 func newHost(t *testing.T, relay *smtptest.Server) *host {
@@ -107,6 +108,7 @@ func (h *host) command(args ...string) (*exec.Cmd, *bytes.Buffer, *bytes.Buffer)
 	cmd.Env = append(os.Environ(),
 		"LHC_PATH_OVERRIDE="+filepath.Join(h.dir, "bin"),
 		"HOME="+h.dir, "KUBECONFIG=")
+	cmd.Env = append(cmd.Env, h.env...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	return cmd, &out, &errb

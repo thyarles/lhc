@@ -34,12 +34,17 @@ type Receiver struct {
 	Now   func() time.Time
 	Log   func(format string, args ...any)
 
-	mu     sync.Mutex
-	key    []byte
-	limit  int64
-	nonces map[string]time.Time  // nonce → when it was accepted
-	hits   map[string]*rateCount // source IP → this minute's requests
-	pruned time.Time
+	mu    sync.Mutex
+	key   []byte
+	limit int64
+	// self names this collector in its sealed answers to claims; claims
+	// are refused while it is "". silentAfter is collector.silent_after.
+	self        string
+	silentAfter time.Duration
+	decide      sync.Mutex            // one claim decided at a time
+	nonces      map[string]time.Time  // nonce → when it was accepted
+	hits        map[string]*rateCount // source IP → this minute's requests
+	pruned      time.Time
 }
 
 type rateCount struct {
@@ -55,6 +60,14 @@ func NewReceiver(key []byte, limit int64, store Store, now func() time.Time, log
 	return r
 }
 
+// ConfigureClaims sets what answering claims needs: this collector's host
+// name and collector.silent_after.
+func (r *Receiver) ConfigureClaims(self string, silentAfter time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.self, r.silentAfter = self, silentAfter
+}
+
 // Configure swaps the key and the size limit, for a reload on SIGHUP.
 func (r *Receiver) Configure(key []byte, limit int64) {
 	r.mu.Lock()
@@ -63,13 +76,17 @@ func (r *Receiver) Configure(key []byte, limit int64) {
 }
 
 func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	if (req.URL.Path != Path && req.URL.Path != NoticePath) || req.Method != http.MethodPost {
+	if (req.URL.Path != Path && req.URL.Path != NoticePath && req.URL.Path != ClaimPath) || req.Method != http.MethodPost {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	ip, _, err := net.SplitHostPort(req.RemoteAddr)
 	if err != nil {
 		ip = req.RemoteAddr
+	}
+	if req.URL.Path == ClaimPath {
+		r.claim(w, req, ip)
+		return
 	}
 	if req.URL.Path == NoticePath {
 		n, err := r.acceptNotice(w, req, ip)
@@ -110,6 +127,64 @@ func (r *Receiver) acceptNotice(w http.ResponseWriter, req *http.Request, ip str
 		return Notice{}, fmt.Errorf("%s: storing the notice: %w", e.Host, err)
 	}
 	return n, nil
+}
+
+// claim decides a host's claim and answers it, sealed. A request that is not
+// a genuine claim gets the usual empty 400.
+func (r *Receiver) claim(w http.ResponseWriter, req *http.Request, ip string) {
+	e, plain, err := r.open(w, req, ip)
+	var c Claim
+	if err == nil {
+		c, err = readClaim(e, plain)
+	}
+	if err == nil {
+		err = r.fresh(e)
+	}
+	r.mu.Lock()
+	key, self, silentAfter := r.key, r.self, r.silentAfter
+	r.mu.Unlock()
+	if err == nil && !ValidHost(self) {
+		err = errors.New("this collector has no host name to answer claims with")
+	}
+	if err != nil {
+		r.Log("rejected claim from %s: %v", ip, err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	r.decide.Lock()
+	now := r.Now()
+	granted, reason, err := r.Store.Decide(c, now, silentAfter)
+	r.decide.Unlock()
+	if err != nil {
+		// Not the host's fault, but never a grant.
+		granted, reason = false, "collector error: "+err.Error()
+	}
+	what := "refused"
+	if granted {
+		what = "granted"
+	}
+	if c.Probe {
+		what = "probe, would be " + what
+	}
+	r.Log("claim %s from %s (group %s): %s: %s", c.Kind, c.Host, c.Group, what, reason)
+
+	body, err := json.Marshal(Answer{Schema: 1, ID: c.ID, By: self, Granted: granted, Reason: reason})
+	var sealed *Envelope
+	if err == nil {
+		sealed, err = Seal(key, self, now, body)
+	}
+	if err == nil {
+		body, err = json.Marshal(sealed)
+	}
+	if err != nil {
+		r.Log("answering the claim from %s: %v", c.Host, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }
 
 func (r *Receiver) accept(w http.ResponseWriter, req *http.Request, ip string) (host, overall string, err error) {

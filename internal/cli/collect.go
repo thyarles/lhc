@@ -24,8 +24,10 @@ func newCollectCmd(a *app) *cobra.Command {
 		Long: `Listen on collector.listen for the encrypted reports that hosts send after
 every run, and keep the latest one from each host in <state_dir>/hub/.
 
-Only POST /v1/report, and a peer collector's POST /v1/digest-sent, are
-answered, with 204 or an empty 400; nothing is ever sent back to a host.
+Only POST /v1/report, a peer collector's POST /v1/digest-sent and a host's
+POST /v1/claim (cert_restart) are answered. Reports and notices get 204 or
+an empty 400; a claim gets its answer sealed with the hub key, and nothing
+else is ever sent back to a host.
 Each accepted or refused request is one line on stderr (the journal, under
 systemd), with the reason for a refusal.
 
@@ -61,6 +63,7 @@ func (a *app) collect(ctx context.Context, hup <-chan os.Signal) error {
 	}
 	store := a.hubStore()
 	recv := hub.NewReceiver(key, int64(a.cfg.Collector.MaxReportSize), store, a.now, logf)
+	recv.ConfigureClaims(a.label(), a.cfg.Collector.SilentAfter.D())
 
 	listen := a.cfg.Collector.Listen
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", listen)
@@ -111,6 +114,7 @@ func (a *app) collect(ctx context.Context, hup <-chan os.Signal) error {
 				continue
 			}
 			recv.Configure(key, int64(a.cfg.Collector.MaxReportSize))
+			recv.ConfigureClaims(a.label(), a.cfg.Collector.SilentAfter.D())
 			logf("SIGHUP: config and hub key reloaded from %s", a.configPath())
 			if a.cfg.Collector.Listen != listen {
 				logf("collector.listen changed to %s: restart the service to listen there", a.cfg.Collector.Listen)

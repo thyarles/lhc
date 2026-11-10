@@ -27,10 +27,16 @@ const (
 	certMaxFiles = 300
 )
 
-var certRoots = []struct{ distro, root string }{
-	{"rke2", "/var/lib/rancher/rke2"},
-	{"k3s", "/var/lib/rancher/k3s"},
+// RancherDir holds rke2/ and k3s/. LHC_RANCHER_DIR replaces it, for the
+// end-to-end tests only, as LHC_PATH_OVERRIDE does for commands.
+func RancherDir() string {
+	if d := Getenv("LHC_RANCHER_DIR"); d != "" {
+		return d
+	}
+	return "/var/lib/rancher"
 }
+
+var distros = []string{"rke2", "k3s"}
 
 // Cert is one leaf certificate on disk.
 type Cert struct {
@@ -83,18 +89,18 @@ func (c Certs) Expired(now time.Time) []Cert {
 // skipped: they last ten years and a restart does not renew them. Only the
 // first certificate of a file counts, so a chain file is not read as its CA.
 func ReadCerts(r runner.Runner) Certs {
-	for _, d := range certRoots {
+	for _, distro := range distros {
 		var c Certs
-		tls := d.root + "/server/tls"
-		if _, err := r.ReadDir(tls); err == nil {
+		root := RancherDir() + "/" + distro
+		if _, err := r.ReadDir(root + "/server/tls"); err == nil {
 			c.Server = true
-			walkCerts(r, d.root, "server/tls", 0, &c)
+			walkCerts(r, root, "server/tls", 0, &c)
 		}
-		walkCerts(r, d.root, "agent", certMaxDepth, &c)
+		walkCerts(r, root, "agent", certMaxDepth, &c)
 		if len(c.Leaves)+c.Unreadable == 0 {
 			continue
 		}
-		c.Distro = d.distro
+		c.Distro = distro
 		slices.SortStableFunc(c.Leaves, func(a, b Cert) int { return a.NotAfter.Compare(b.NotAfter) })
 		return c
 	}

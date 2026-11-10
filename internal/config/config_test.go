@@ -98,6 +98,13 @@ func TestValidation(t *testing.T) {
 		"collector:\n  takeover_after: 2m\n",
 		"collector:\n  takeover_after: 3h\n",
 		"collector:\n  owner_notify_min_kills: -1\n",
+		"cert_restart:\n  before: 30d\n",
+		"hub:\n  collectors: [\"http://collector.example.com:8461\"]\ncert_restart:\n  before: 6d\n",
+		"hub:\n  collectors: [\"http://collector.example.com:8461\"]\ncert_restart:\n  before: 120d\n",
+		"cert_restart:\n  group: \"k8s node\"\n",
+		"cert_restart:\n  time: \"3am\"\n",
+		"cert_restart:\n  window: 5m\n",
+		"cert_restart:\n  window: 7h\n",
 		"collector:\n  owner_notify_remind: 12h\n",
 		"collector:\n  owner_notify_annotation: \"\"\n",
 		"collector:\n  owner_notify_annotation: lhc/\n",
@@ -294,6 +301,35 @@ func TestParseDuration(t *testing.T) {
 		back, err := config.ParseDuration(config.Duration(d).String())
 		if err != nil || back != d {
 			t.Errorf("round trip %v: %v %v", d, back, err)
+		}
+	}
+}
+
+func TestCertRestartNeedsCollectorsAndARenewableMargin(t *testing.T) {
+	c, err := config.Parse([]byte("hub:\n  collectors: [\"http://collector.example.com:8461\"]\ncert_restart:\n  before: 30d\n  group: K8S-Node\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if c.CertRestart.Before.D() != 30*24*time.Hour || c.CertRestart.Time != "03:00" || c.CertRestart.Window.D() != 2*time.Hour {
+		t.Fatalf("%+v", c.CertRestart)
+	}
+}
+
+func TestGroupOf(t *testing.T) {
+	for _, tc := range []struct{ group, host, want string }{
+		{"", "k8s-node07.example.com", "k8s-node"},
+		{"", "K8S-Node07", "k8s-node"},
+		{"", "web01", "web"},
+		{"", "db", "db"},
+		{"", "1234.example.com", "1234"},
+		{"", "node-3.example.com", "node"},
+		{" Rancher ", "k8s-node07.example.com", "rancher"},
+	} {
+		if got := config.GroupOf(tc.group, tc.host); got != tc.want {
+			t.Errorf("GroupOf(%q, %q) = %q, want %q", tc.group, tc.host, got, tc.want)
 		}
 	}
 }

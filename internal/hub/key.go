@@ -4,6 +4,8 @@
 //
 // Data flows one way. A collector answers 204 or 400 with an empty body and
 // never sends anything else back, so a host never acts on what it hears.
+// The one exception is a claim (claim.go): its answer is sealed with the
+// hub key and bound to the claim, and a host acts on a majority of them.
 package hub
 
 import (

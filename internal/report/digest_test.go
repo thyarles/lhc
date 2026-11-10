@@ -41,6 +41,16 @@ func goldenDigest() *Digest {
 		Older:     []string{"db01.example.com (1.2.3)", "lhc-c3.example.com (1.2.3)", "web01.example.com (1.2.3)", "web02.example.com (dev)", "web03.example.com (unknown)"},
 		OlderMore: 2,
 		OnePerHub: true, Standby: []string{"lhc-c2.example.com", "lhc-c3.example.com"}, Slot: digestNow,
+		CertGroups: []CertGroup{
+			{Name: "k8s-node", Hosts: 3, BeforeDays: 30, Lines: []CertLine{
+				{check.OK, "k8s-node02 restarted rke2-server at 03:41, renewed (first expires in 364d)"},
+				{check.Info, "due: k8s-node03 (expires in 29d)"},
+			}},
+			{Name: "k8s-worker", Hosts: 2, BeforeDays: 30, Lines: []CertLine{
+				{check.Unhealthy, "k8s-worker01 restarted at 03:12, no report since"},
+			}},
+			{Name: "rancher", Hosts: 3, BeforeDays: 21},
+		},
 	}
 }
 

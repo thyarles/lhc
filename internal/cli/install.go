@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/thyarles/lhc/internal/config"
 	"github.com/thyarles/lhc/internal/hub"
+	"github.com/thyarles/lhc/internal/kube"
 	"github.com/thyarles/lhc/internal/runner"
 	"github.com/thyarles/lhc/internal/schedule"
 )
@@ -109,6 +111,9 @@ included) rewrites and restarts that service, with or without --collector.`,
 			if err := in.Install(cmd.Context(), b, a.cfg.Schedule, schedule.Job{Binary: bin, Config: path, Log: a.paths.Log}); err != nil {
 				return err
 			}
+			if err := a.installCertRestart(cmd.Context(), in, b, schedule.Job{Binary: bin, Config: path}); err != nil {
+				return err
+			}
 			if why != "" {
 				if err := in.InstallCollector(cmd.Context(), schedule.Job{Binary: bin, Config: path}); err != nil {
 					return err
@@ -130,6 +135,27 @@ included) rewrites and restarts that service, with or without --collector.`,
 	f.StringVar(&backend, "backend", "", "force systemd or cron")
 	f.BoolVar(&collector, "collector", false, "also run the hub collector service (lhc collect)")
 	return cmd
+}
+
+// installCertRestart adds the lhc-cert-restart timer when cert_restart is
+// on and this is an rke2/k3s node under systemd, and removes it otherwise.
+func (a *app) installCertRestart(ctx context.Context, in *schedule.Installer, b schedule.Backend, j schedule.Job) error {
+	cr := a.cfg.CertRestart
+	switch {
+	case cr.Before.D() == 0:
+		return in.RemoveCertRestart(ctx)
+	case b != schedule.Systemd:
+		a.printf("  ! cert_restart.before is set, but its timer needs systemd 229 or later, as root: not installed")
+		return in.RemoveCertRestart(ctx)
+	case !kube.ReadCerts(a.runner).Found():
+		a.printf("  ! cert_restart.before is set, but there are no rke2/k3s certificates here: timer not installed")
+		return in.RemoveCertRestart(ctx)
+	}
+	if err := in.InstallCertRestart(ctx, cr, j); err != nil {
+		return err
+	}
+	a.printf("  Certificate restarts: nightly at %s within %s, when the first certificate expires within %s", cr.Time, cr.Window, cr.Before)
+	return nil
 }
 
 // collectorReason is what makes this host a collector, "--collector" or

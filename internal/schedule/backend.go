@@ -37,6 +37,9 @@ var (
 	TimerName   = "lhc.timer"
 	// CollectorName is the long-running `lhc collect` of a hub collector.
 	CollectorName = "lhc-collect.service"
+	// CertRestartService and CertRestartTimer run `lhc cert-restart` nightly.
+	CertRestartService = "lhc-cert-restart.service"
+	CertRestartTimer   = "lhc-cert-restart.timer"
 )
 
 // Detect picks the backend. systemd needs root (these are system units), a
@@ -122,6 +125,44 @@ NoNewPrivileges=yes
 [Install]
 WantedBy=multi-user.target
 `, j.Binary, j.Config)
+}
+
+// CertRestartServiceUnit runs one night's `lhc cert-restart`. The restart,
+// the wait for the node and the lhc run after it can take a while.
+func CertRestartServiceUnit(j Job) string {
+	return fmt.Sprintf(`# Managed by lhc install. Changes are overwritten on the next install.
+[Unit]
+Description=Restart rke2/k3s before its certificates expire (lhc)
+Documentation=https://github.com/thyarles/lhc
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%s cert-restart --scheduled --config %s
+TimeoutStartSec=45min
+`, j.Binary, j.Config)
+}
+
+// CertRestartTimerUnit fires once a night in cert_restart's window. No
+// Persistent: a night missed is tried the next night, never at boot.
+func CertRestartTimerUnit(c config.CertRestart) (string, error) {
+	h, m, err := config.ParseTime(c.Time)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(`# Managed by lhc install. Changes are overwritten on the next install.
+[Unit]
+Description=Run lhc cert-restart in its nightly window
+
+[Timer]
+OnCalendar=*-*-* %02d:%02d:00
+RandomizedDelaySec=%d
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
+`, h, m, int(c.Window.D().Seconds())), nil
 }
 
 // TimerUnit fires at the schedule's times with systemd's own jitter.
@@ -292,10 +333,49 @@ func (in *Installer) InstallCollector(ctx context.Context, j Job) error {
 	return nil
 }
 
-// Uninstall removes whatever lhc installed, from either backend, and the
-// collector service if there is one.
+// InstallCertRestart writes and enables the lhc-cert-restart timer.
+func (in *Installer) InstallCertRestart(ctx context.Context, c config.CertRestart, j Job) error {
+	timer, err := CertRestartTimerUnit(c)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(UnitDir, CertRestartService), []byte(CertRestartServiceUnit(j)), 0o644); err != nil { //nolint:gosec // unit files are world-readable by convention
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(UnitDir, CertRestartTimer), []byte(timer), 0o644); err != nil { //nolint:gosec // as above
+		return err
+	}
+	for _, args := range [][]string{{"daemon-reload"}, {"enable", "--now", CertRestartTimer}, {"restart", CertRestartTimer}} {
+		if res := in.Runner.Run(ctx, "systemctl", args...); !res.OK() {
+			return fmt.Errorf("systemctl %s: %s", strings.Join(args, " "), firstLine(res.Stderr, res.Err))
+		}
+	}
+	in.Out("  ✓ systemd timer %s enabled", CertRestartTimer)
+	return nil
+}
+
+// RemoveCertRestart removes the lhc-cert-restart timer, if it is there.
+func (in *Installer) RemoveCertRestart(ctx context.Context) error {
+	timer := filepath.Join(UnitDir, CertRestartTimer)
+	if _, err := os.Stat(timer); err != nil {
+		return nil
+	}
+	in.Runner.Run(ctx, "systemctl", "disable", "--now", CertRestartTimer)
+	var errs []error
+	for _, f := range []string{timer, filepath.Join(UnitDir, CertRestartService)} {
+		if err := os.Remove(f); err != nil && !errors.Is(err, os.ErrNotExist) {
+			errs = append(errs, err)
+		}
+	}
+	in.Runner.Run(ctx, "systemctl", "daemon-reload")
+	in.Out("  ✓ systemd timer %s removed", CertRestartTimer)
+	return errors.Join(errs...)
+}
+
+// Uninstall removes whatever lhc installed, from either backend, the
+// collector service and the cert-restart timer.
 func (in *Installer) Uninstall(ctx context.Context) error {
-	return errors.Join(in.removeSystemd(ctx), in.removeCron(ctx), in.removeCollector(ctx))
+	return errors.Join(in.removeSystemd(ctx), in.removeCron(ctx), in.removeCollector(ctx), in.RemoveCertRestart(ctx))
 }
 
 func (in *Installer) removeCollector(ctx context.Context) error {

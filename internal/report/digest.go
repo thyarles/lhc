@@ -46,6 +46,41 @@ type Digest struct {
 	// LookupErr is why the cluster API could not be asked about the
 	// OOM-killed pods; "" when it was, or did not need to be.
 	LookupErr string
+	// CertGroups are the cert_restart groups, by name; nil when no host
+	// has cert_restart.before.
+	CertGroups []CertGroup
+}
+
+// CertGroup is one cert_restart group as the digest shows it.
+type CertGroup struct {
+	Name       string
+	Hosts      int
+	BeforeDays int
+	Lines      []CertLine // restarts, problems and nodes due; none: nothing to say
+}
+
+// CertLine is one fact about a group: a restart, or a node due.
+type CertLine struct {
+	Status check.Status
+	Text   string
+}
+
+// Status is the worst of the group's lines.
+func (g CertGroup) Status() check.Status {
+	st := check.OK
+	for _, l := range g.Lines {
+		st = check.Worse(st, l.Status)
+	}
+	return st
+}
+
+// Head is "3 hosts, restart at 30d", and "nothing due" when no line follows.
+func (g CertGroup) Head() string {
+	s := plural(g.Hosts, "host") + fmt.Sprintf(", restart at %dd", g.BeforeDays)
+	if len(g.Lines) == 0 {
+		s += " · nothing due"
+	}
+	return s
 }
 
 // OlderListed is how many hosts behind the newest version the digest names.
@@ -319,6 +354,16 @@ func DigestText(d *Digest) string {
 		}
 	}
 
+	if len(d.CertGroups) > 0 {
+		lines = append(lines, "", "  CERTIFICATE RESTARTS")
+		for _, g := range d.CertGroups {
+			lines = append(lines, hostLines(g.Name, g.Status(), g.Head())...)
+			for _, l := range g.Lines {
+				lines = append(lines, detailLines(Pal(l.Status).Sym+" "+l.Text)...)
+			}
+		}
+	}
+
 	lines = append(lines, "", "  EVERYONE ELSE", "  "+plural(d.OK, "host")+" OK")
 	for _, t := range []string{d.Totals(), d.VersionsLine()} {
 		if t == "" {
@@ -393,6 +438,13 @@ type dhost struct {
 var digestTmpl = template.Must(template.Must(htmlTmpl.Clone()).Funcs(template.FuncMap{
 	"row": func(host string, st check.Status, what string, lines ...string) dhost {
 		return dhost{host, st, what, lines}
+	},
+	"certgroup": func(g CertGroup) dhost {
+		lines := make([]string, len(g.Lines))
+		for i, l := range g.Lines {
+			lines[i] = Pal(l.Status).Sym + " " + l.Text
+		}
+		return dhost{g.Name, g.Status(), g.Head(), lines}
 	},
 	"notok": func(h DigestHost) dhost {
 		what := h.Status.Word()

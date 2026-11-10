@@ -75,6 +75,8 @@ type DigestOptions struct {
 	// Owners are the workloads past collector.owner_notify_min_kills, for
 	// the "told …" or "no owner named" on their pods' lines.
 	Owners []Workload
+	// Grants are this collector's cert_restart grants (LoadGrants).
+	Grants []Grant
 }
 
 // BuildDigest classifies every host and returns the digest, plus the state
@@ -161,7 +163,14 @@ func BuildDigest(entries []Entry, prev DigestState, o DigestOptions) (*report.Di
 		}
 	}
 
+	d.CertGroups = certGroups(entries, o.Grants, o.Now)
+
 	d.Overall = check.OK
+	for _, g := range d.CertGroups {
+		if st := g.Status(); st >= check.Caution {
+			d.Overall = check.Worse(d.Overall, st)
+		}
+	}
 	for _, h := range d.NotOK {
 		d.Overall = check.Worse(d.Overall, h.Status)
 	}
