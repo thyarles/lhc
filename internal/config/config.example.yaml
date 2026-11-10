@@ -213,6 +213,13 @@ checks:
     evicted_recent_hours: 24
     # Guard rail: stop reading the pod list past this many rows.
     max_pods: 2000
+    # Expiry of the rke2/k3s certificates on this node, read from the files
+    # (CA certificates are skipped). rke2 renews them on a service restart
+    # once they have less than 120 days left.
+    certificates: true
+    # CAUTION and an alert when the first one expires within this many days;
+    # UNHEALTHY once one has expired.
+    certificates_caution_days: 21
   updates:
     enabled: true
     # Pending updates are planned maintenance. 0 reports the counts as INFO
