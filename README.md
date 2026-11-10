@@ -267,10 +267,13 @@ on workers without a kubeconfig and while the API is down: everything under
 skipped: they last ten years and a restart does not renew them.
 
 ```
-Certificates   14 certificates, first expires in 108d (2027-02-26), renewed on the next rke2 restart
+Certificates   first expiry 2027-02-26 (108d), 14 certs
 ```
 
-The row stays INFO through rke2's 120-day warning period. It turns CAUTION, with
+The date comes first so that it fits the text report's single line; the
+HTML report adds the certificate's file name and, inside rke2's 120 days,
+"renewed on the next rke2-server restart". The row stays INFO through rke2's
+120-day warning period. It turns CAUTION, with
 an alert, when the first certificate expires within
 `checks.kubernetes.certificates_caution_days` (21), and UNHEALTHY once one
 has expired. The fix is the one rke2 names: `systemctl restart rke2-server`

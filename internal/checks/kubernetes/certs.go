@@ -49,18 +49,30 @@ func certRows(s *check.Section, env *check.Env, cfg *Config) bool {
 		return true
 	}
 
+	// The date first: an INFO row gets one line of about 42 columns in the
+	// text report, and the date is what a reader compares with rke2's event.
 	first := c.Leaves[0]
 	days := daysLeft(now, first.NotAfter)
-	value := fmt.Sprintf("%d certificates, first expires in %dd (%s)", len(c.Leaves), days, first.NotAfter.Format("2006-01-02"))
-	if first.NotAfter.Sub(now) <= kube.RenewWithin {
-		value += fmt.Sprintf(", renewed on the next %s restart", c.Distro)
+	certs := fmt.Sprintf("%d certs", len(c.Leaves))
+	if len(c.Leaves) == 1 {
+		certs = "1 cert"
 	}
-	value += unreadable
+	value := fmt.Sprintf("first expiry %s (%dd), %s", first.NotAfter.Format("2006-01-02"), days, certs)
+	var detail []string
+	if first.NotAfter.Sub(now) <= kube.RenewWithin {
+		detail = append(detail, first.Base()+", renewed on the next "+c.Service()+" restart")
+	} else {
+		detail = append(detail, first.Base())
+	}
+	if c.Unreadable > 0 {
+		detail = append(detail, fmt.Sprintf("%d unreadable", c.Unreadable))
+	}
+	opt := check.Detail(strings.Join(detail, "; "))
 	if days < cfg.CertificatesCautionDays {
-		s.Add("Certificates", value, check.Caution, check.Detail(first.Base()))
+		s.Add("Certificates", value, check.Caution, opt)
 		s.Alert(check.Caution, fmt.Sprintf("%s certificates expire in %dd: restart %s to renew them", c.Distro, days, c.Service()))
 		return true
 	}
-	s.Add("Certificates", value, check.Info)
+	s.Add("Certificates", value, check.Info, opt)
 	return true
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/thyarles/lhc/internal/config"
 	"github.com/thyarles/lhc/internal/hub"
 	"github.com/thyarles/lhc/internal/kube"
+	"github.com/thyarles/lhc/internal/report"
 	"github.com/thyarles/lhc/internal/runner"
 	"github.com/thyarles/lhc/internal/schedule"
 )
@@ -154,8 +155,14 @@ func (a *app) installCertRestart(ctx context.Context, in *schedule.Installer, b 
 	if err := in.InstallCertRestart(ctx, cr, j); err != nil {
 		return err
 	}
-	a.printf("  Certificate restarts: nightly at %s within %s, when the first certificate expires within %s", cr.Time, cr.Window, cr.Before)
+	a.printf("%s", certRestartLine(cr))
 	return nil
+}
+
+// certRestartLine is what install says about cert_restart. report.Hours
+// writes "89 days", where the setting's own String says 2136h.
+func certRestartLine(cr config.CertRestart) string {
+	return fmt.Sprintf("  Certificate restarts: nightly at %s within %s, when the first certificate expires within %s", cr.Time, cr.Window, report.Hours(cr.Before.D()))
 }
 
 // collectorReason is what makes this host a collector, "--collector" or
